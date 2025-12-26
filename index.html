@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoFlow AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              // Refined Slate/Zinc palette for a technical look
+              gray: {
+                50: '#f9fafb',
+                100: '#f3f4f6',
+                200: '#e5e7eb',
+                300: '#d1d5db',
+                400: '#9ca3af',
+                500: '#6b7280',
+                600: '#4b5563',
+                700: '#374151',
+                800: '#1f2937',
+                850: '#171923', // Deep background
+                900: '#111827',
+                950: '#030712', // Almost black
+              },
+              primary: {
+                50: '#eff6ff',
+                100: '#dbeafe',
+                500: '#3b82f6',
+                600: '#2563eb',
+                700: '#1d4ed8',
+                glow: 'rgba(59, 130, 246, 0.5)'
+              }
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.3s ease-out',
+              'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              slideUp: {
+                '0%': { transform: 'translateY(20px)', opacity: '0' },
+                '100%': { transform: 'translateY(0)', opacity: '1' },
+              }
+            },
+            typography: (theme) => ({
+              DEFAULT: {
+                css: {
+                  maxWidth: 'none',
+                  color: theme('colors.gray.700'),
+                  fontFamily: 'Inter, sans-serif',
+                  p: { marginTop: '0.5em', marginBottom: '0.5em', lineHeight: '1.6' },
+                  code: {
+                    fontFamily: 'JetBrains Mono, monospace',
+                    backgroundColor: theme('colors.gray.100'),
+                    color: theme('colors.pink.600'),
+                    padding: '0.125rem 0.375rem',
+                    borderRadius: '0.25rem',
+                    fontWeight: '500',
+                  },
+                  'code::before': { content: '""' },
+                  'code::after': { content: '""' },
+                  pre: {
+                    backgroundColor: 'transparent', // We handle the container manually
+                    padding: 0,
+                  }
+                },
+              },
+              invert: {
+                css: {
+                  color: theme('colors.gray.300'),
+                  code: {
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    color: theme('colors.pink.400'),
+                  },
+                },
+              },
+            }),
+          },
+        },
+        plugins: [
+          function({ addBase, theme }) {
+            addBase({
+              'h1': { fontSize: theme('fontSize.2xl') },
+              'h2': { fontSize: theme('fontSize.xl') },
+              'h3': { fontSize: theme('fontSize.lg') },
+            })
+          }
+        ]
+      }
+    </script>
+    <style>
+      /* Smooth scrolling */
+      html { scroll-behavior: smooth; }
+      
+      /* Glass scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: rgba(156, 163, 175, 0.3);
+        border-radius: 999px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(156, 163, 175, 0.5);
+      }
+      
+      /* VSCode-like Syntax Highlighting Base */
+      .markdown-body pre {
+        background-color: #0d1117;
+        color: #e6edf3;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        overflow-x: auto;
+        border: 1px solid rgba(55, 65, 81, 0.4);
+        margin: 0.75rem 0;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.875rem;
+      }
+      
+      /* Utilities */
+      .glass {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      .dark .glass {
+        background: rgba(17, 24, 39, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      
+      .glass-card {
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(0,0,0,0.05);
+      }
+      .dark .glass-card {
+        background: rgba(30, 41, 59, 0.4);
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+
+      /* Glow Effects */
+      .glow-text {
+        text-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react-markdown": "https://esm.sh/react-markdown@^10.1.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-300 antialiased overflow-hidden">
+    <!-- Ambient Background Mesh -->
+    <div class="fixed inset-0 z-0 pointer-events-none opacity-40 dark:opacity-20">
+        <div class="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-purple-500 blur-[128px]"></div>
+        <div class="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-blue-600 blur-[128px]"></div>
+    </div>
+    <div id="root" class="relative z-10 h-full"></div>
+  </body>
+</html>

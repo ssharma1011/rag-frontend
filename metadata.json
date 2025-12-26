@@ -1,0 +1,5 @@
+{
+  "name": "AutoFlow UI",
+  "description": "An AI code assistant UI that provides a chat interface for developers to interact with an AI agent for code analysis and bug fixing.",
+  "requestFramePermissions": []
+}
