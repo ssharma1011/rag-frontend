@@ -20,5 +20,7 @@ export {
   Upload, 
   File as FileIcon, 
   ArrowDown,
-  Terminal
+  Terminal,
+  AlertTriangle,
+  DollarSign
 } from 'lucide-react';

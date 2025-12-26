@@ -10,6 +10,7 @@ interface HeaderProps {
   isRepoLocked: boolean;
   onHistoryClick: () => void;
   onNewChat: () => void;
+  onMetricsClick: () => void;
   className?: string;
 }
 
@@ -21,6 +22,7 @@ const Header: React.FC<HeaderProps> = ({
   isRepoLocked, 
   onHistoryClick, 
   onNewChat,
+  onMetricsClick,
   className = ''
 }) => {
   return (
@@ -29,7 +31,7 @@ const Header: React.FC<HeaderProps> = ({
         {/* Left: Branding */}
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 group cursor-default">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-shadow">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 group-hover:shadow-blue-500/40 transition-shadow">
                 <Home className="w-5 h-5 text-white" />
             </div>
             <div className="flex flex-col">
@@ -70,6 +72,7 @@ const Header: React.FC<HeaderProps> = ({
           </button>
 
           <button 
+             onClick={onMetricsClick}
              className="p-2 text-gray-500 hover:text-purple-600 dark:text-gray-400 dark:hover:text-purple-400 transition-colors"
              title="Metrics"
           >

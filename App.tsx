@@ -3,8 +3,9 @@ import Header from './components/Header';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import HistorySidebar from './components/HistorySidebar';
-import { Theme, ChatMessage, Conversation } from './types';
-import { workflowService } from './services/workflowService'; // Switched to real service
+import MetricsModal from './components/MetricsModal';
+import { Theme, ChatMessage, Conversation, WorkflowStatus } from './types';
+import { workflowService } from './services/workflowService';
 
 const App: React.FC = () => {
   // --- Theme State ---
@@ -52,6 +53,7 @@ const App: React.FC = () => {
   const [isRepoLocked, setIsRepoLocked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isMetricsOpen, setIsMetricsOpen] = useState(false);
   const [pollingId, setPollingId] = useState<NodeJS.Timeout | null>(null);
 
   // --- Persistence ---
@@ -65,27 +67,55 @@ const App: React.FC = () => {
 
   // --- Conversation Management ---
   const startNewChat = () => {
-    if (currentConversationId && messages.length > 0) {
-        // Already updated via state sync
-    }
+    // Clear current ID and messages to show empty state
     setCurrentConversationId(null);
     setMessages([]);
     setIsRepoLocked(false);
     setIsLoading(false);
+    
+    // Stop any active polling
     if (pollingId) {
         clearInterval(pollingId);
         setPollingId(null);
     }
   };
 
-  const loadConversation = (id: string) => {
+  const loadConversation = async (id: string) => {
     const conv = conversations.find(c => c.id === id);
     if (conv) {
       setCurrentConversationId(conv.id);
-      setMessages(conv.messages);
-      setRepoUrl(conv.repoUrl);
       setIsRepoLocked(true); 
+      setRepoUrl(conv.repoUrl);
+      
+      // Initial load from local state for speed
+      setMessages(conv.messages);
       setIsHistoryOpen(false);
+
+      // Fetch latest history from backend to sync
+      try {
+        const historyData = await workflowService.getHistory(id);
+        
+        // Map backend messages to frontend format
+        // Assumes backend format is [{role: 'user'|'assistant', content: string, timestamp: string}]
+        const mappedMessages: ChatMessage[] = historyData.messages.map((m: any, idx: number) => ({
+            id: `hist_${id}_${idx}`,
+            sender: m.role === 'user' ? 'user' : 'agent',
+            content: m.content,
+            timestamp: new Date(m.timestamp || Date.now()),
+            status: (idx === historyData.messages.length - 1 && historyData.status !== 'COMPLETED' ? historyData.status : 'COMPLETED') as WorkflowStatus
+        }));
+
+        setMessages(mappedMessages);
+        
+        // Update local state with fresh data
+        setConversations(prev => prev.map(c => 
+            c.id === id ? { ...c, messages: mappedMessages } : c
+        ));
+
+      } catch (err) {
+        console.error("Failed to sync history from backend:", err);
+        // Fallback to local state which is already set
+      }
     }
   };
 
@@ -113,31 +143,32 @@ const App: React.FC = () => {
 
     // Create or Update Conversation in State
     let conversationId = currentConversationId;
+    
+    // If we are starting fresh or resumed a chat, manage ID
     if (!conversationId) {
-        conversationId = `conv_${Date.now()}`;
-        setCurrentConversationId(conversationId);
-        const newConv: Conversation = {
-            id: conversationId,
-            repoUrl: newRepoUrl,
-            messages: newMessages,
-            timestamp: new Date()
-        };
-        setConversations(prev => [newConv, ...prev]);
-    } else {
-        setConversations(prev => prev.map(c => 
-            c.id === conversationId 
-                ? { ...c, messages: newMessages, timestamp: new Date() } 
-                : c
-        ));
+        // Optimistic ID, will be updated if backend returns a real one
+        conversationId = `conv_${Date.now()}`; 
     }
 
     try {
-      const response = await workflowService.startWorkflow({
+      let response;
+      
+      // If we are in an existing conversation, we might use respondToWorkflow if it's awaiting input
+      // But for now, we assume standard flow starts new workflow or appends
+      // Actually, if conversationId exists, we should probably check status, but `startWorkflow` creates a NEW one usually
+      // The requirement implies `startWorkflow` starts a fresh flow.
+      
+      response = await workflowService.startWorkflow({
         requirement: data.content,
         repoUrl: newRepoUrl,
         logsPasted: data.logsPasted,
-        logFiles: data.logFiles
+        logFiles: data.logFiles,
+        // user_id if needed
       });
+
+      // Update Conversation ID with real one from backend
+      conversationId = response.conversationId;
+      setCurrentConversationId(conversationId);
 
       const agentMsg: ChatMessage = {
         id: `msg_${Date.now()}_a`,
@@ -152,12 +183,22 @@ const App: React.FC = () => {
       const messagesWithAgent = [...newMessages, agentMsg];
       setMessages(messagesWithAgent);
       
-      setConversations(prev => prev.map(c => 
-        c.id === conversationId 
-            ? { ...c, messages: messagesWithAgent } 
-            : c
-      ));
+      // Update or Add to Conversation List
+      setConversations(prev => {
+        const exists = prev.some(c => c.id === conversationId);
+        if (exists) {
+            return prev.map(c => c.id === conversationId ? { ...c, messages: messagesWithAgent, timestamp: new Date() } : c);
+        } else {
+            return [{
+                id: conversationId!,
+                repoUrl: newRepoUrl,
+                messages: messagesWithAgent,
+                timestamp: new Date()
+            }, ...prev];
+        }
+      });
 
+      // Start Polling
       const intervalId = setInterval(async () => {
         try {
           const status = await workflowService.getWorkflowStatus(response.conversationId);
@@ -199,7 +240,7 @@ const App: React.FC = () => {
                  return [...prev.slice(0, -1), { 
                      ...last, 
                      status: 'FAILED', 
-                     content: last.content + "\n\n❌ **Connection Error**: Could not reach backend at localhost:8080."
+                     content: last.content + "\n\n❌ **Connection Lost**: Unable to reach the server. Please check your connection."
                  }];
              }
              return prev;
@@ -215,7 +256,7 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, {
           id: `err_${Date.now()}`,
           sender: 'agent',
-          content: 'Failed to start workflow. Ensure your backend is running at http://localhost:8080',
+          content: '❌ **Error**: Failed to start workflow.\n\nPlease ensure the backend is running on port 8080.',
           timestamp: new Date(),
           status: 'FAILED'
       }]);
@@ -230,27 +271,24 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans relative">
-      {/* Header positioned absolutely/fixed to allow content to scroll behind */}
       <Header
         theme={theme}
         toggleTheme={toggleTheme}
-        showHistoryButton={isRepoLocked} 
+        showHistoryButton={true} // Always show history button for access
         repoUrl={repoUrl}
         isRepoLocked={isRepoLocked}
         onHistoryClick={() => setIsHistoryOpen(true)}
         onNewChat={startNewChat}
+        onMetricsClick={() => setIsMetricsOpen(true)}
         className="absolute top-0 left-0 right-0 w-full"
       />
 
-      {/* Main Layout Area - Center constrained for ultra-wide monitors */}
       <div className="flex-1 relative flex flex-col max-w-5xl mx-auto w-full h-full">
-        {/* MessageList takes full height of this container, padding accounts for header/input */}
         <MessageList 
             messages={messages} 
             isLoading={isLoading} 
         />
         
-        {/* Input sits on top of message list visually at the bottom */}
         <div className="absolute bottom-0 left-0 right-0 px-4 pb-6 pt-2 z-20 pointer-events-none">
             <div className="pointer-events-auto">
                 <ChatInput 
@@ -267,6 +305,11 @@ const App: React.FC = () => {
             conversations={conversations}
             onSelectConversation={loadConversation}
             onClose={() => setIsHistoryOpen(false)}
+        />
+
+        <MetricsModal 
+            isOpen={isMetricsOpen}
+            onClose={() => setIsMetricsOpen(false)}
         />
       </div>
     </div>
