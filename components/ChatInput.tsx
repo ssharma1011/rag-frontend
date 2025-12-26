@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Github, FileText, ChevronUp, ChevronDown, Upload } from './Icons';
+import { Send, Github, FileText, ChevronUp, ChevronDown, Upload, CheckCircle2 } from './Icons';
 import { detectLogs, countLogLines, extractLogs, extractRequirement } from '../utils/logDetection';
 import { isValidGitHubUrl } from '../utils/validation';
 import FileUpload from './FileUpload';
@@ -115,38 +115,70 @@ const ChatInput: React.FC<ChatInputProps> = ({
     `}>
         
       {/* Top Bar: Repo & Tools */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-gray-200/30 dark:border-gray-700/30">
-        <div className="flex-1 flex items-center gap-3">
-             {/* Repo Input - Morphing based on lock state */}
-            {!isRepoLocked ? (
-                <div className="flex items-center gap-2 flex-1 max-w-md transition-all">
-                     <Github className="w-4 h-4 text-gray-400" />
-                     <input
-                        type="text"
-                        value={repoUrl}
-                        onChange={(e) => { setRepoUrl(e.target.value); validateRepo(e.target.value); }}
-                        placeholder="github.com/username/repo"
-                        className="bg-transparent border-none outline-none text-xs sm:text-sm text-gray-700 dark:text-gray-200 w-full placeholder-gray-400 dark:placeholder-gray-600 font-mono"
-                     />
-                     {repoError && <span className="text-[10px] text-red-500 font-medium whitespace-nowrap">{repoError}</span>}
-                </div>
-            ) : (
-                <div className="flex items-center gap-2 text-xs font-mono text-gray-400">
-                    <Github className="w-3.5 h-3.5" />
-                    <span>Linked</span>
-                </div>
+      <div className="flex items-center px-3 pt-3 pb-2 border-b border-gray-200/30 dark:border-gray-700/30 gap-2">
+        
+        {/* Repo Input Container - Flex grow to take available space */}
+        <div className={`
+            flex-1 flex items-center gap-2 min-w-0 rounded-lg px-2.5 py-1.5 border transition-all group
+            ${isRepoLocked 
+                ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700/50' 
+                : 'bg-white/50 dark:bg-gray-900/30 border-gray-200/50 dark:border-gray-700/50 hover:border-blue-300 dark:hover:border-blue-700 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/10 focus-within:bg-white dark:focus-within:bg-gray-900'}
+        `}>
+            <Github className={`w-3.5 h-3.5 shrink-0 ${isRepoLocked ? 'text-green-500' : 'text-gray-400 group-focus-within:text-blue-500'}`} />
+            
+            <div className="flex-1 relative min-w-0">
+                <input
+                    type="text"
+                    value={repoUrl}
+                    onChange={(e) => { setRepoUrl(e.target.value); validateRepo(e.target.value); }}
+                    placeholder="Paste GitHub repository URL..."
+                    disabled={isRepoLocked}
+                    className={`
+                        w-full bg-transparent border-none outline-none text-xs font-mono truncate
+                        ${isRepoLocked 
+                            ? 'text-gray-600 dark:text-gray-400 cursor-default' 
+                            : 'text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600'}
+                    `}
+                    spellCheck={false}
+                />
+            </div>
+
+            {repoError && !isRepoLocked && (
+                <span className="text-[10px] text-red-500 font-medium whitespace-nowrap px-1">
+                    {repoError}
+                </span>
+            )}
+             
+            {isRepoLocked && (
+                 <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-green-500/10 dark:bg-green-500/20">
+                    <CheckCircle2 className="w-3 h-3 text-green-600 dark:text-green-400" />
+                    <span className="text-[10px] text-green-700 dark:text-green-300 font-medium whitespace-nowrap">
+                        Linked
+                    </span>
+                 </div>
             )}
         </div>
-        
-        <div className="flex items-center gap-2">
-            <button 
-                onClick={() => setShowFileUpload(!showFileUpload)}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors ${logFiles.length > 0 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-            >
-                <Upload className="w-3.5 h-3.5" />
-                {logFiles.length > 0 ? `${logFiles.length} Attached` : 'Upload'}
-            </button>
-        </div>
+
+        {/* Tools Section */}
+        <button 
+            onClick={() => setShowFileUpload(!showFileUpload)}
+            className={`
+                shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border
+                ${logFiles.length > 0 
+                    ? 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' 
+                    : 'bg-white/50 dark:bg-gray-800/50 border-gray-200/50 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-white dark:hover:bg-gray-800'}
+            `}
+            title={showFileUpload ? "Hide Upload" : "Upload Log Files"}
+        >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">
+                {logFiles.length > 0 ? `${logFiles.length} Logs` : 'Upload Logs'}
+            </span>
+             {/* Mobile counter */}
+             <span className="sm:hidden">
+                {logFiles.length > 0 ? logFiles.length : ''}
+             </span>
+        </button>
       </div>
 
       {/* Main Input Area */}
