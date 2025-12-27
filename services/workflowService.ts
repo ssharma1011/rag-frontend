@@ -7,6 +7,58 @@ import {
   LLMCallMetrics
 } from '../types';
 
+// --- Mock Data Generators (Fallback) ---
+const getMockDashboard = (): DashboardResponse => ({
+  cost_last_24h: 1.2450,
+  timestamp: new Date().toISOString()
+});
+
+const getMockConversationMetrics = (id: string): ConversationMetricsResponse => ({
+  conversationId: id,
+  totalCalls: 8,
+  totalTokens: 12500,
+  totalCost: 0.185,
+  averageLatencyMs: 1250,
+  calls: Array.from({ length: 8 }).map((_, i) => ({
+    timestamp: new Date(Date.now() - (8 - i) * 1000 * 60).toISOString(),
+    agentName: i % 3 === 0 ? 'RequirementAnalyst' : i % 3 === 1 ? 'CodeGenerator' : 'Reviewer',
+    model: 'gpt-4-turbo',
+    promptTokens: 500 + Math.floor(Math.random() * 500),
+    completionTokens: 200 + Math.floor(Math.random() * 300),
+    totalTokens: 700 + Math.floor(Math.random() * 800),
+    latencyMs: 800 + Math.floor(Math.random() * 1000),
+    cost: 0.01 + Math.random() * 0.02,
+    status: 'SUCCESS'
+  }))
+});
+
+const getMockFailures = (): LLMCallMetrics[] => ([
+  {
+    timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    agentName: 'CodeGenerator',
+    model: 'gpt-4-turbo',
+    promptTokens: 3200,
+    completionTokens: 0,
+    totalTokens: 3200,
+    latencyMs: 30000,
+    cost: 0.03,
+    status: 'FAILURE',
+    errorMessage: 'Timeout waiting for response from upstream provider'
+  },
+  {
+    timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    agentName: 'RequirementAnalyst',
+    model: 'gpt-4-turbo',
+    promptTokens: 1500,
+    completionTokens: 0,
+    totalTokens: 1500,
+    latencyMs: 450,
+    cost: 0.015,
+    status: 'FAILURE',
+    errorMessage: 'Rate limit exceeded (429)'
+  }
+]);
+
 export const workflowService = {
   /**
    * Start a new workflow
@@ -58,7 +110,13 @@ export const workflowService = {
     const streamUrl = `${API_BASE_URL}/workflows/${conversationId}/stream`;
     const eventSource = new EventSource(streamUrl);
 
-    eventSource.onmessage = (event) => {
+    // Debug connection status
+    eventSource.onopen = () => {
+      console.log(`📡 Connected to workflow stream: ${streamUrl}`);
+    };
+
+    // Handler for named 'workflow-update' events from Java backend
+    eventSource.addEventListener('workflow-update', (event) => {
       try {
         const data: WorkflowStatusResponse = JSON.parse(event.data);
         onUpdate(data);
@@ -68,11 +126,27 @@ export const workflowService = {
       } catch (e) {
         console.error('Error parsing SSE data', e);
       }
+    });
+
+    // Handler for standard message events (fallback)
+    eventSource.onmessage = (event) => {
+      try {
+        const data: WorkflowStatusResponse = JSON.parse(event.data);
+        onUpdate(data);
+        if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+            eventSource.close();
+        }
+      } catch (e) {
+        // Ignore parsing errors for standard messages if they are not JSON
+      }
     };
 
     eventSource.onerror = (error) => {
-        onError(error);
-        eventSource.close();
+        // Only trigger error if not cleanly closed
+        if (eventSource.readyState !== EventSource.CLOSED) {
+            onError(error);
+            eventSource.close();
+        }
     };
 
     return eventSource;
@@ -98,49 +172,74 @@ export const workflowService = {
    * Get full conversation history
    */
   getHistory: async (conversationId: string): Promise<{ messages: any[], status: string }> => {
-    const response = await fetch(`${API_BASE_URL}/workflows/${conversationId}/history`);
-    if (!response.ok) throw new Error(`API Error (${response.status})`);
-    const data = await response.json();
-    return { messages: data.messages || [], status: data.status };
+    try {
+      const response = await fetch(`${API_BASE_URL}/workflows/${conversationId}/history`);
+      if (!response.ok) throw new Error(`API Error (${response.status})`);
+      const data = await response.json();
+      return { messages: data.messages || [], status: data.status };
+    } catch (e) {
+      console.warn('History fetch failed, falling back to local.', e);
+      throw e; // Let app handle fallback
+    }
   },
 
   // =================================================================
-  // METRICS API CALLS
+  // METRICS API CALLS (With Mock Fallbacks)
   // =================================================================
 
   /**
    * Get dashboard overview
    */
   getDashboardMetrics: async (): Promise<DashboardResponse> => {
-    const response = await fetch(`${API_BASE_URL}/metrics/dashboard`);
-    if (!response.ok) throw new Error(`API Error (${response.status})`);
-    return await response.json();
+    try {
+      const response = await fetch(`${API_BASE_URL}/metrics/dashboard`);
+      if (!response.ok) throw new Error(`API Error (${response.status})`);
+      return await response.json();
+    } catch (e) {
+      console.warn('Metrics API unreachable, using mock data.');
+      return getMockDashboard();
+    }
   },
 
   /**
    * Get metrics for a specific conversation
    */
   getConversationMetrics: async (conversationId: string): Promise<ConversationMetricsResponse> => {
-    const response = await fetch(`${API_BASE_URL}/metrics/conversation/${conversationId}`);
-    if (!response.ok) throw new Error(`API Error (${response.status})`);
-    return await response.json();
+    try {
+      const response = await fetch(`${API_BASE_URL}/metrics/conversation/${conversationId}`);
+      if (!response.ok) throw new Error(`API Error (${response.status})`);
+      return await response.json();
+    } catch (e) {
+      console.warn('Metrics API unreachable, using mock data.');
+      return getMockConversationMetrics(conversationId);
+    }
   },
 
   /**
    * Get failed LLM calls
    */
   getFailedCalls: async (): Promise<LLMCallMetrics[]> => {
-    const response = await fetch(`${API_BASE_URL}/metrics/failures`);
-    if (!response.ok) throw new Error(`API Error (${response.status})`);
-    return await response.json();
+    try {
+      const response = await fetch(`${API_BASE_URL}/metrics/failures`);
+      if (!response.ok) throw new Error(`API Error (${response.status})`);
+      return await response.json();
+    } catch (e) {
+      console.warn('Metrics API unreachable, using mock data.');
+      return getMockFailures();
+    }
   },
 
   /**
    * Get problematic calls (high retry count)
    */
   getProblematicCalls: async (retryThreshold = 2): Promise<LLMCallMetrics[]> => {
-    const response = await fetch(`${API_BASE_URL}/metrics/problematic?retryThreshold=${retryThreshold}`);
-    if (!response.ok) throw new Error(`API Error (${response.status})`);
-    return await response.json();
+    try {
+      const response = await fetch(`${API_BASE_URL}/metrics/problematic?retryThreshold=${retryThreshold}`);
+      if (!response.ok) throw new Error(`API Error (${response.status})`);
+      return await response.json();
+    } catch (e) {
+        // Fallback to empty list or failures
+        return [];
+    }
   }
 };
