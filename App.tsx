@@ -27,8 +27,14 @@ const App: React.FC = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isMetricsOpen, setIsMetricsOpen] = useState(false);
   
-  // Store active event sources to prevent duplicate streams and allow cleanup
+  // Refs for stable access inside closures/callbacks
   const activeStreamsRef = useRef<Map<string, EventSource>>(new Map());
+  const currentConversationIdRef = useRef<string | null>(null);
+
+  // Sync ref with state
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
 
   // --- 1. Efficient Hydration ---
   useEffect(() => {
@@ -48,12 +54,17 @@ const App: React.FC = () => {
         // Conversations
         const savedConvs = localStorage.getItem('conversations');
         if (savedConvs) {
-          const parsed = JSON.parse(savedConvs).map((c: any) => ({
-            ...c,
-            timestamp: new Date(c.timestamp),
-            messages: c.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
-          }));
-          setConversations(parsed);
+          try {
+            const parsed = JSON.parse(savedConvs).map((c: any) => ({
+                ...c,
+                timestamp: new Date(c.timestamp),
+                messages: Array.isArray(c.messages) ? c.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })) : []
+            }));
+            setConversations(parsed);
+          } catch (err) {
+            console.error("Error parsing saved conversations", err);
+            localStorage.removeItem('conversations');
+          }
         }
       } catch (e) {
         console.error('Failed to hydrate state', e);
@@ -103,14 +114,16 @@ const App: React.FC = () => {
   const closeStream = (conversationId: string) => {
     const es = activeStreamsRef.current.get(conversationId);
     if (es) {
+        console.log(`🔌 Closing stream for ${conversationId}`);
         es.close();
         activeStreamsRef.current.delete(conversationId);
     }
   };
 
   // --- Real-time Handler ---
-  // Uses functional updates to avoid stale closures
+  // Using Ref for current ID check to avoid stale closures and side-effects in setters
   const handleWorkflowUpdate = (status: WorkflowStatusResponse, conversationId: string) => {
+    
     // 1. Update Conversations List (Background state)
     setConversations(prevConvs => {
         return prevConvs.map(c => {
@@ -120,6 +133,7 @@ const App: React.FC = () => {
             const lastMsgIndex = msgs.length - 1;
             const lastMsg = msgs[lastMsgIndex];
 
+            // Only update if we have a valid agent message to update
             if (lastMsg && lastMsg.sender === 'agent') {
                 const updatedLast = {
                     ...lastMsg,
@@ -129,36 +143,60 @@ const App: React.FC = () => {
                     agent: status.agent
                 };
                 msgs[lastMsgIndex] = updatedLast;
+            } else if (status.message && (!lastMsg || lastMsg.sender === 'user')) {
+                // Edge case: If we received an update but don't have an agent message placeholder yet (latency race)
+                msgs.push({
+                    id: `msg_${Date.now()}_a`,
+                    sender: 'agent',
+                    content: status.message,
+                    timestamp: new Date(),
+                    agent: status.agent,
+                    status: status.status,
+                    progress: status.progress
+                });
             }
 
             return { ...c, messages: msgs };
         });
     });
 
-    // 2. Update Messages View (If currently viewing this chat)
-    setCurrentConversationId(currId => {
-        // We check currId inside the callback to ensure we have the latest value
-        if (currId === conversationId) {
-            setMessages(prevMsgs => {
-                const lastMsg = prevMsgs[prevMsgs.length - 1];
-                if (lastMsg && lastMsg.sender === 'agent') {
-                     return [...prevMsgs.slice(0, -1), {
-                        ...lastMsg,
-                        content: status.message,
-                        status: status.status,
-                        progress: status.progress,
-                        agent: status.agent
-                     }];
-                }
-                return prevMsgs;
-            });
+    // 2. Update Messages View (ONLY if this is the currently viewed conversation)
+    if (currentConversationIdRef.current === conversationId) {
+        setMessages(prevMsgs => {
+            const msgs = [...prevMsgs];
+            const lastMsg = msgs[msgs.length - 1];
 
-            if (status.status === 'COMPLETED' || status.status === 'FAILED') {
-                setIsLoading(false);
+            if (lastMsg && lastMsg.sender === 'agent') {
+                 msgs[msgs.length - 1] = {
+                    ...lastMsg,
+                    content: status.message,
+                    status: status.status,
+                    progress: status.progress,
+                    agent: status.agent
+                 };
+                 return msgs;
+            } else if (status.message) {
+                // Append if missing (rare race condition)
+                return [...msgs, {
+                    id: `msg_${Date.now()}_a`,
+                    sender: 'agent',
+                    content: status.message,
+                    timestamp: new Date(),
+                    agent: status.agent,
+                    status: status.status,
+                    progress: status.progress
+                }];
             }
+            return prevMsgs;
+        });
+
+        // Update Loading State based on status
+        if (status.status === 'COMPLETED' || status.status === 'FAILED') {
+            setIsLoading(false);
+        } else {
+            setIsLoading(true);
         }
-        return currId;
-    });
+    }
 
     // 3. Cleanup if done
     if (status.status === 'COMPLETED' || status.status === 'FAILED') {
@@ -170,10 +208,11 @@ const App: React.FC = () => {
   const handleWorkflowError = (error: any, conversationId: string) => {
     console.error(`Stream error for ${conversationId}:`, error);
     
+    // Don't close immediately on minor network blips, but for now we assume error = disconnect
     const failStatus: WorkflowStatusResponse = {
         conversationId,
         status: 'FAILED',
-        message: 'Connection lost. Please check your network or try again.',
+        message: 'Connection lost. Please check backend logs or refresh.',
         agent: 'System',
         progress: 0
     };
@@ -188,47 +227,50 @@ const App: React.FC = () => {
     setMessages([]);
     setIsRepoLocked(false);
     setIsLoading(false);
+    // Note: We do NOT close background streams for other chats here, they continue updating history
   };
 
   const loadConversation = async (id: string) => {
     const conv = conversations.find(c => c.id === id);
     if (!conv) return;
 
+    console.log(`📂 Loading conversation: ${id}`);
+
     // 1. Set Context
-    setCurrentConversationId(conv.id);
+    setCurrentConversationId(id);
     setIsRepoLocked(true); 
     setRepoUrl(conv.repoUrl);
     setIsHistoryOpen(false);
     
-    // 2. Optimistic Load (Instant UI feedback)
-    setMessages(conv.messages);
+    // 2. Optimistic Load (Instant UI feedback from local state)
+    setMessages(conv.messages || []);
     
     // Check local state to show loading spinner immediately if applicable
-    const lastMsgLocal = conv.messages[conv.messages.length - 1];
+    const lastMsgLocal = conv.messages && conv.messages.length > 0 ? conv.messages[conv.messages.length - 1] : null;
     const isRunningLocal = lastMsgLocal && lastMsgLocal.sender === 'agent' && lastMsgLocal.status === 'RUNNING';
     setIsLoading(isRunningLocal || false); 
 
     try {
         // 3. Fetch Full History from Server
-        // This ensures we get any messages we might have missed while offline/away
-        console.log(`Fetching history for conversation: ${id}`);
         const historyData = await workflowService.getHistory(id);
         
-        const fetchedMessages: ChatMessage[] = historyData.messages.map((m: any) => ({
-            ...m,
-            timestamp: new Date(m.timestamp)
-        }));
+        if (historyData && Array.isArray(historyData.messages)) {
+            const fetchedMessages: ChatMessage[] = historyData.messages.map((m: any) => ({
+                ...m,
+                timestamp: new Date(m.timestamp)
+            }));
 
-        // Update UI with fresh data
-        setMessages(fetchedMessages);
+            // Update UI with fresh data
+            setMessages(fetchedMessages);
 
-        // Update Background List
-        setConversations(prev => prev.map(c => 
-            c.id === id ? { ...c, messages: fetchedMessages, timestamp: new Date() } : c
-        ));
+            // Update Background List
+            setConversations(prev => prev.map(c => 
+                c.id === id ? { ...c, messages: fetchedMessages, timestamp: new Date() } : c
+            ));
+        }
 
         // 4. Resume Stream if needed
-        const serverStatus = historyData.status; 
+        const serverStatus = historyData?.status; 
         
         if (serverStatus === 'RUNNING') {
             setIsLoading(true);
@@ -245,7 +287,7 @@ const App: React.FC = () => {
             }
         } else {
             setIsLoading(false);
-            closeStream(id); // Clean up any stale streams
+            closeStream(id); // Clean up active stream if server says it's done
         }
 
     } catch (e) {
