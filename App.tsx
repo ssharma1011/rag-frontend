@@ -267,17 +267,13 @@ const App: React.FC = () => {
       setMessages(messagesWithError);
 
       // 2. CRITICAL: Persist this error state to the Conversations List
-      // If we don't do this, the sidebar/history will never know this conversation failed.
       if (currentConversationId) {
-          // If we already had an ID (existing chat)
           setConversations(prev => prev.map(c => 
               c.id === currentConversationId 
                   ? { ...c, messages: messagesWithError, timestamp: new Date() } 
                   : c
           ));
       } else {
-          // If this was a BRAND NEW chat that failed immediately
-          // Create a temporary ID so it saves in history
           const tempId = `failed_${Date.now()}`;
           setCurrentConversationId(tempId);
           setConversations(prev => [{
@@ -331,6 +327,7 @@ const App: React.FC = () => {
         <MetricsModal 
             isOpen={isMetricsOpen}
             onClose={() => setIsMetricsOpen(false)}
+            currentConversationId={currentConversationId}
         />
       </div>
     </div>

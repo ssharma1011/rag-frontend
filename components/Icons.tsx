@@ -23,5 +23,7 @@ export {
   Terminal,
   AlertTriangle,
   DollarSign,
-  Link
+  Link,
+  Activity,
+  AlertOctagon
 } from 'lucide-react';

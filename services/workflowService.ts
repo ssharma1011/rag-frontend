@@ -1,5 +1,11 @@
 import { API_BASE_URL } from './config';
-import { WorkflowRequest, WorkflowStatusResponse, ChatMessage } from '../types';
+import { 
+  WorkflowRequest, 
+  WorkflowStatusResponse, 
+  ConversationMetricsResponse, 
+  DashboardResponse,
+  LLMCallMetrics
+} from '../types';
 
 export const workflowService = {
   /**
@@ -42,27 +48,20 @@ export const workflowService = {
   },
 
   /**
-   * Connect to a Server-Sent Events stream for real-time updates.
-   * Replaces the need for polling.
+   * Connect to SSE stream
    */
   connectToWorkflowStream: (
     conversationId: string, 
     onUpdate: (data: WorkflowStatusResponse) => void,
     onError: (error: any) => void
   ): EventSource => {
-    // Determine absolute URL because EventSource constructor doesn't always handle relative paths with proxies identically to fetch
-    // However, if using Vite proxy, relative path usually works. 
-    // We will use the relative path aligned with API_BASE_URL.
     const streamUrl = `${API_BASE_URL}/workflows/${conversationId}/stream`;
-    
     const eventSource = new EventSource(streamUrl);
 
     eventSource.onmessage = (event) => {
       try {
         const data: WorkflowStatusResponse = JSON.parse(event.data);
         onUpdate(data);
-        
-        // Auto-close on completion states to save resources
         if (data.status === 'COMPLETED' || data.status === 'FAILED') {
             eventSource.close();
         }
@@ -72,7 +71,6 @@ export const workflowService = {
     };
 
     eventSource.onerror = (error) => {
-        // SSE often fires error on connection close, we let the caller handle cleanup
         onError(error);
         eventSource.close();
     };
@@ -91,34 +89,58 @@ export const workflowService = {
     });
 
     if (!response.ok) {
-      throw new Error(`API Error (${response.status}): ${response.statusText}`);
+      throw new Error(`API Error (${response.status})`);
     }
     return await response.json();
   },
 
   /**
-   * Get full conversation history from backend
+   * Get full conversation history
    */
   getHistory: async (conversationId: string): Promise<{ messages: any[], status: string }> => {
     const response = await fetch(`${API_BASE_URL}/workflows/${conversationId}/history`);
-    if (!response.ok) {
-      throw new Error(`API Error (${response.status})`);
-    }
+    if (!response.ok) throw new Error(`API Error (${response.status})`);
     const data = await response.json();
-    return {
-        messages: data.messages || [],
-        status: data.status
-    };
+    return { messages: data.messages || [], status: data.status };
+  },
+
+  // =================================================================
+  // METRICS API CALLS
+  // =================================================================
+
+  /**
+   * Get dashboard overview
+   */
+  getDashboardMetrics: async (): Promise<DashboardResponse> => {
+    const response = await fetch(`${API_BASE_URL}/metrics/dashboard`);
+    if (!response.ok) throw new Error(`API Error (${response.status})`);
+    return await response.json();
   },
 
   /**
-   * Get Dashboard Metrics
+   * Get metrics for a specific conversation
    */
-  getDashboardMetrics: async (): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/metrics/dashboard`);
-    if (!response.ok) {
-      throw new Error(`API Error (${response.status})`);
-    }
+  getConversationMetrics: async (conversationId: string): Promise<ConversationMetricsResponse> => {
+    const response = await fetch(`${API_BASE_URL}/metrics/conversation/${conversationId}`);
+    if (!response.ok) throw new Error(`API Error (${response.status})`);
+    return await response.json();
+  },
+
+  /**
+   * Get failed LLM calls
+   */
+  getFailedCalls: async (): Promise<LLMCallMetrics[]> => {
+    const response = await fetch(`${API_BASE_URL}/metrics/failures`);
+    if (!response.ok) throw new Error(`API Error (${response.status})`);
+    return await response.json();
+  },
+
+  /**
+   * Get problematic calls (high retry count)
+   */
+  getProblematicCalls: async (retryThreshold = 2): Promise<LLMCallMetrics[]> => {
+    const response = await fetch(`${API_BASE_URL}/metrics/problematic?retryThreshold=${retryThreshold}`);
+    if (!response.ok) throw new Error(`API Error (${response.status})`);
     return await response.json();
   }
 };

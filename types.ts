@@ -36,3 +36,43 @@ export interface Conversation {
   messages: ChatMessage[];
   timestamp: Date;
 }
+
+// --- Metrics Interfaces (Matching Java DTOs) ---
+
+export interface LLMCallMetrics {
+  id?: string;
+  timestamp: string; // ISO DateTime
+  agentName: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  latencyMs: number;
+  cost: number;
+  status: 'SUCCESS' | 'FAILURE';
+  errorMessage?: string;
+  retryCount?: number;
+}
+
+export interface ConversationMetricsResponse {
+  conversationId: string;
+  totalCalls: number;
+  totalTokens: number;
+  totalCost: number;
+  averageLatencyMs: number;
+  calls: LLMCallMetrics[];
+}
+
+export interface AgentPerformanceStats {
+  agentName: string;
+  totalCalls: number;
+  avgLatencyMs: number;
+  successRate: number; // 0.0 to 1.0
+  totalCost: number;
+}
+
+export interface DashboardResponse {
+  cost_last_24h: number;
+  timestamp: string;
+  // Add other dashboard fields if backend provides them
+}
