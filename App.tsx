@@ -194,39 +194,68 @@ const App: React.FC = () => {
 
   const loadConversation = async (id: string) => {
     const conv = conversations.find(c => c.id === id);
-    if (conv) {
-      setCurrentConversationId(conv.id);
-      setIsRepoLocked(true); 
-      setRepoUrl(conv.repoUrl);
-      setMessages(conv.messages);
-      setIsHistoryOpen(false);
-      
-      const lastMsg = conv.messages[conv.messages.length - 1];
-      const isRunning = lastMsg && lastMsg.sender === 'agent' && lastMsg.status === 'RUNNING';
-      setIsLoading(isRunning || false);
+    if (!conv) return;
 
-      // Attempt to revive stream if running but missing (e.g. after refresh)
-      if (isRunning && !activeStreamsRef.current.has(id)) {
-         try {
-             // Check if it actually finished while we were away
-             const historyData = await workflowService.getHistory(id);
-             if (historyData.status === 'COMPLETED' || historyData.status === 'FAILED') {
-                 setIsLoading(false);
-                 // Update with final state
-                 const completedMsg: ChatMessage = {
-                     ...lastMsg!,
-                     status: historyData.status as WorkflowStatus,
-                     content: historyData.messages[historyData.messages.length - 1]?.content || lastMsg.content
-                 };
-                 // Update state
-                 const updateState = (prev: ChatMessage[]) => [...prev.slice(0, -1), completedMsg];
-                 setMessages(updateState);
-                 setConversations(prev => prev.map(c => c.id === id ? {...c, messages: updateState(c.messages)} : c));
-             }
-         } catch (e) {
-             console.warn("Could not check status of running chat", e);
-         }
-      }
+    setCurrentConversationId(conv.id);
+    setIsRepoLocked(true); 
+    setRepoUrl(conv.repoUrl);
+    
+    // 1. Optimistic Load from Local Storage
+    setMessages(conv.messages);
+    setIsHistoryOpen(false);
+    
+    const lastMsgLocal = conv.messages[conv.messages.length - 1];
+    const isRunningLocal = lastMsgLocal && lastMsgLocal.sender === 'agent' && lastMsgLocal.status === 'RUNNING';
+    
+    // Show loading based on local state initially
+    setIsLoading(isRunningLocal || false); 
+
+    try {
+        // 2. Fetch Authoritative History from Backend
+        console.log(`Fetching history for conversation: ${id}`);
+        const historyData = await workflowService.getHistory(id);
+        
+        // Transform timestamps from ISO string to Date objects
+        const fetchedMessages: ChatMessage[] = historyData.messages.map((m: any) => ({
+            ...m,
+            timestamp: new Date(m.timestamp)
+        }));
+
+        // Update Messages View with fresh data
+        setMessages(fetchedMessages);
+
+        // Update Conversations List with fresh data
+        setConversations(prev => prev.map(c => 
+            c.id === id ? { ...c, messages: fetchedMessages, timestamp: new Date() } : c
+        ));
+
+        // 3. Handle Status & Stream Resumption
+        const serverStatus = historyData.status; // 'RUNNING', 'COMPLETED', etc.
+        
+        if (serverStatus === 'RUNNING') {
+            setIsLoading(true);
+
+            // Check if we need to connect/reconnect stream
+            if (!activeStreamsRef.current.has(id)) {
+                console.log(`🔄 Resuming disconnected stream for conversation: ${id}`);
+                const es = workflowService.connectToWorkflowStream(
+                    id,
+                    (data) => handleWorkflowUpdate(data, id),
+                    (error) => handleWorkflowError(error, id)
+                );
+                activeStreamsRef.current.set(id, es);
+            }
+        } else {
+            // It is finished on server
+            setIsLoading(false);
+            // If we had a local stream but server says done, close it
+            closeStream(id);
+        }
+
+    } catch (e) {
+        console.warn(`Failed to sync history for ${id} (using local data)`, e);
+        // Fallback: If local said running, we preserve that state, 
+        // effectively waiting for user action or a later refresh if network is down.
     }
   };
 
