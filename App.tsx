@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import HistorySidebar from './components/HistorySidebar';
 import MetricsModal from './components/MetricsModal';
-import { Theme, ChatMessage, Conversation, WorkflowStatus } from './types';
+import { Theme, ChatMessage, Conversation, WorkflowStatus, WorkflowStatusResponse } from './types';
 import { workflowService } from './services/workflowService';
 
 const App: React.FC = () => {
@@ -54,7 +54,9 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isMetricsOpen, setIsMetricsOpen] = useState(false);
-  const [pollingId, setPollingId] = useState<NodeJS.Timeout | null>(null);
+  
+  // Ref to hold the active EventSource so we can close it on unmount or new chat
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // --- Persistence ---
   useEffect(() => {
@@ -65,22 +67,37 @@ const App: React.FC = () => {
     localStorage.setItem('lastRepoUrl', repoUrl);
   }, [repoUrl]);
 
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
+
   // --- Conversation Management ---
   const startNewChat = () => {
+    // Close existing stream if any
+    if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+    }
+
     // Clear current ID and messages to show empty state
     setCurrentConversationId(null);
     setMessages([]);
     setIsRepoLocked(false);
     setIsLoading(false);
-    
-    // Stop any active polling
-    if (pollingId) {
-        clearInterval(pollingId);
-        setPollingId(null);
-    }
   };
 
   const loadConversation = async (id: string) => {
+    // Close existing stream if any when switching
+    if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+    }
+
     const conv = conversations.find(c => c.id === id);
     if (conv) {
       setCurrentConversationId(conv.id);
@@ -96,7 +113,6 @@ const App: React.FC = () => {
         const historyData = await workflowService.getHistory(id);
         
         // Map backend messages to frontend format
-        // Assumes backend format is [{role: 'user'|'assistant', content: string, timestamp: string}]
         const mappedMessages: ChatMessage[] = historyData.messages.map((m: any, idx: number) => ({
             id: `hist_${id}_${idx}`,
             sender: m.role === 'user' ? 'user' : 'agent',
@@ -114,8 +130,47 @@ const App: React.FC = () => {
 
       } catch (err) {
         console.error("Failed to sync history from backend:", err);
-        // Fallback to local state which is already set
       }
+    }
+  };
+
+  // --- Real-time Handler ---
+  const handleWorkflowUpdate = (status: WorkflowStatusResponse, conversationId: string) => {
+    setMessages(prev => {
+        // Find if the last message is an agent message that we should update
+        const lastMsg = prev[prev.length - 1];
+        
+        if (lastMsg && lastMsg.sender === 'agent') {
+            // Update existing agent message (streaming effect)
+            const updatedLast = {
+                ...lastMsg,
+                content: status.message, // Assuming backend sends full accumulated text or we append. Usually SSE sends full snapshot or delta. Here assuming snapshot based on previous logic.
+                status: status.status,
+                progress: status.progress,
+                agent: status.agent
+            };
+            
+            // Sync with conversation list
+            setConversations(convs => convs.map(c => 
+                c.id === conversationId 
+                    ? { ...c, messages: [...prev.slice(0, -1), updatedLast] } 
+                    : c
+            ));
+
+            return [...prev.slice(0, -1), updatedLast];
+        } else {
+            // Edge case: Agent message doesn't exist yet (rare with SSE start delay), append it
+            // Or if previous was user, append new agent message
+            return prev; // Should be handled by initialization in handleSendMessage
+        }
+    });
+
+    if (status.status === 'COMPLETED' || status.status === 'FAILED') {
+        setIsLoading(false);
+        if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+        }
     }
   };
 
@@ -141,49 +196,37 @@ const App: React.FC = () => {
     setMessages(newMessages);
     setIsLoading(true);
 
-    // Create or Update Conversation in State
-    let conversationId = currentConversationId;
-    
-    // If we are starting fresh or resumed a chat, manage ID
-    if (!conversationId) {
-        // Optimistic ID, will be updated if backend returns a real one
-        conversationId = `conv_${Date.now()}`; 
+    // Close previous stream if exists
+    if (eventSourceRef.current) {
+        eventSourceRef.current.close();
     }
 
     try {
-      let response;
-      
-      // If we are in an existing conversation, we might use respondToWorkflow if it's awaiting input
-      // But for now, we assume standard flow starts new workflow or appends
-      // Actually, if conversationId exists, we should probably check status, but `startWorkflow` creates a NEW one usually
-      // The requirement implies `startWorkflow` starts a fresh flow.
-      
-      response = await workflowService.startWorkflow({
+      const response = await workflowService.startWorkflow({
         requirement: data.content,
         repoUrl: newRepoUrl,
         logsPasted: data.logsPasted,
         logFiles: data.logFiles,
-        // user_id if needed
       });
 
-      // Update Conversation ID with real one from backend
-      conversationId = response.conversationId;
+      const conversationId = response.conversationId;
       setCurrentConversationId(conversationId);
 
+      // Initialize the placeholder Agent message immediately
       const agentMsg: ChatMessage = {
         id: `msg_${Date.now()}_a`,
         sender: 'agent',
-        content: response.message,
+        content: response.message || "Initializing...",
         timestamp: new Date(),
-        agent: response.agent,
-        status: response.status,
-        progress: response.progress
+        agent: response.agent || "System",
+        status: response.status || "RUNNING",
+        progress: response.progress || 0
       };
 
       const messagesWithAgent = [...newMessages, agentMsg];
       setMessages(messagesWithAgent);
       
-      // Update or Add to Conversation List
+      // Save initial state
       setConversations(prev => {
         const exists = prev.some(c => c.id === conversationId);
         if (exists) {
@@ -198,57 +241,18 @@ const App: React.FC = () => {
         }
       });
 
-      // Start Polling
-      const intervalId = setInterval(async () => {
-        try {
-          const status = await workflowService.getWorkflowStatus(response.conversationId);
-          
-          setMessages(prev => {
-            const last = prev[prev.length - 1];
-            if (last.sender === 'agent') {
-              const updatedLast = {
-                ...last,
-                content: status.message,
-                status: status.status,
-                progress: status.progress,
-                agent: status.agent
-              };
-              
-              setConversations(convs => convs.map(c => 
-                c.id === conversationId 
-                    ? { ...c, messages: [...prev.slice(0, -1), updatedLast] } 
-                    : c
-              ));
-
-              return [...prev.slice(0, -1), updatedLast];
-            }
-            return prev;
-          });
-
-          if (status.status === 'COMPLETED' || status.status === 'FAILED') {
-            clearInterval(intervalId);
-            setIsLoading(false);
-          }
-        } catch (error) {
-          console.error("Polling error", error);
-          clearInterval(intervalId);
-          setIsLoading(false);
-          
-          setMessages(prev => {
-             const last = prev[prev.length - 1];
-             if(last.sender === 'agent' && last.status === 'RUNNING') {
-                 return [...prev.slice(0, -1), { 
-                     ...last, 
-                     status: 'FAILED', 
-                     content: last.content + "\n\n❌ **Connection Lost**: Unable to reach the server. Please check your connection."
-                 }];
-             }
-             return prev;
-          });
+      // --- START STREAMING (SSE) ---
+      eventSourceRef.current = workflowService.connectToWorkflowStream(
+        conversationId,
+        (data) => handleWorkflowUpdate(data, conversationId),
+        (error) => {
+            console.error("SSE Error:", error);
+            // Only stop loading if we are fairly sure it's a fatal error, 
+            // otherwise SSE might just be reconnecting.
+            // For now, we assume close() logic in service handles fatal.
+            // We can add a timeout check here if needed.
         }
-      }, 2000);
-
-      setPollingId(intervalId);
+      );
 
     } catch (error) {
       console.error("Failed to start workflow", error);
@@ -256,18 +260,12 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, {
           id: `err_${Date.now()}`,
           sender: 'agent',
-          content: '❌ **Error**: Failed to start workflow.\n\nPlease ensure the backend is running on port 8080.',
+          content: '❌ **Error**: Failed to start workflow.\n\nPlease ensure the backend is running.',
           timestamp: new Date(),
           status: 'FAILED'
       }]);
     }
   };
-
-  useEffect(() => {
-    return () => {
-      if (pollingId) clearInterval(pollingId);
-    };
-  }, [pollingId]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans relative">

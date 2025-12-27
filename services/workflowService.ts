@@ -42,14 +42,42 @@ export const workflowService = {
   },
 
   /**
-   * Poll for workflow status
+   * Connect to a Server-Sent Events stream for real-time updates.
+   * Replaces the need for polling.
    */
-  getWorkflowStatus: async (conversationId: string): Promise<WorkflowStatusResponse> => {
-    const response = await fetch(`${API_BASE_URL}/workflows/${conversationId}/status`);
-    if (!response.ok) {
-      throw new Error(`API Error (${response.status}): ${await response.text()}`);
-    }
-    return await response.json();
+  connectToWorkflowStream: (
+    conversationId: string, 
+    onUpdate: (data: WorkflowStatusResponse) => void,
+    onError: (error: any) => void
+  ): EventSource => {
+    // Determine absolute URL because EventSource constructor doesn't always handle relative paths with proxies identically to fetch
+    // However, if using Vite proxy, relative path usually works. 
+    // We will use the relative path aligned with API_BASE_URL.
+    const streamUrl = `${API_BASE_URL}/workflows/${conversationId}/stream`;
+    
+    const eventSource = new EventSource(streamUrl);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data: WorkflowStatusResponse = JSON.parse(event.data);
+        onUpdate(data);
+        
+        // Auto-close on completion states to save resources
+        if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+            eventSource.close();
+        }
+      } catch (e) {
+        console.error('Error parsing SSE data', e);
+      }
+    };
+
+    eventSource.onerror = (error) => {
+        // SSE often fires error on connection close, we let the caller handle cleanup
+        onError(error);
+        eventSource.close();
+    };
+
+    return eventSource;
   },
 
   /**
