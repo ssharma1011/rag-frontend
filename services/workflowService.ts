@@ -79,11 +79,30 @@ const handleApiError = async (response: Response) => {
   throw new Error(errorMessage);
 };
 
+const SIMULATION_PREFIX = 'sim_test_';
+
 export const workflowService = {
   /**
    * Start a new workflow
    */
   startWorkflow: async (request: WorkflowRequest): Promise<WorkflowStatusResponse> => {
+    // --- SIMULATION MODE ---
+    if (request.requirement.trim().toLowerCase() === '/test') {
+        console.log("🧪 Starting Simulation Mode");
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                resolve({
+                    conversationId: `${SIMULATION_PREFIX}${Date.now()}`,
+                    status: 'RUNNING',
+                    message: '🧪 Simulation Started. Initializing agents...',
+                    agent: 'TestController',
+                    progress: 0.05
+                });
+            }, 500);
+        });
+    }
+    // -----------------------
+
     const hasLogs = !!request.logsPasted || (request.logFiles && request.logFiles.length > 0);
     
     let body: string | FormData;
@@ -134,43 +153,98 @@ export const workflowService = {
     onUpdate: (data: WorkflowStatusResponse) => void,
     onError: (error: any) => void
   ): EventSource => {
+    
+    // --- SIMULATION MODE STREAM ---
+    if (conversationId.startsWith(SIMULATION_PREFIX)) {
+        console.log(`🔌 Connected to Simulated Stream: ${conversationId}`);
+        let progress = 0.05;
+        const steps = [
+            { msg: "Analyzing requirements...", agent: "RequirementAnalyst" },
+            { msg: "Scanning repository structure...", agent: "RepoScanner" },
+            { msg: "Identifying relevant files...", agent: "ContextBuilder" },
+            { msg: "Drafting solution plan...", agent: "Architect" },
+            { msg: "Generating code changes...", agent: "CodeGenerator" },
+            { msg: "Running static analysis...", agent: "Reviewer" },
+            { msg: "Finalizing response...", agent: "System" },
+            { msg: "Done. Simulation complete.", agent: "System", status: "COMPLETED" }
+        ];
+        
+        let stepIndex = 0;
+        
+        const interval = setInterval(() => {
+            const step = steps[stepIndex];
+            progress += 0.12;
+            if (progress > 1) progress = 1;
+
+            const update: WorkflowStatusResponse = {
+                conversationId,
+                status: (step.status as any) || 'RUNNING',
+                message: step.msg,
+                agent: step.agent,
+                progress: progress
+            };
+
+            onUpdate(update);
+            
+            if (update.status === 'COMPLETED') {
+                clearInterval(interval);
+            }
+            stepIndex++;
+            if (stepIndex >= steps.length) clearInterval(interval);
+
+        }, 1500); // Update every 1.5 seconds
+
+        // Return a fake EventSource object that allows 'close'
+        return { close: () => clearInterval(interval) } as any;
+    }
+    // ----------------------------
+
     const streamUrl = `${API_BASE_URL}/workflows/${conversationId}/stream`;
+    console.log(`📡 Connecting to SSE: ${streamUrl}`);
+    
     const eventSource = new EventSource(streamUrl);
 
-    // Debug connection status
     eventSource.onopen = () => {
-      console.log(`📡 Connected to workflow stream: ${streamUrl}`);
+      console.log(`✅ SSE Connection Opened: ${streamUrl}`);
     };
 
-    // Handler for named 'workflow-update' events from Java backend
+    // Handler for named 'workflow-update' events
     eventSource.addEventListener('workflow-update', (event) => {
+      console.log('📨 SSE Named Event received:', event.data);
       try {
         const data: WorkflowStatusResponse = JSON.parse(event.data);
         onUpdate(data);
         if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+            console.log('🏁 Workflow finished (Named Event), closing stream.');
             eventSource.close();
         }
       } catch (e) {
-        console.error('Error parsing SSE data', e);
+        console.error('❌ Error parsing SSE Named Event data', e);
       }
     });
 
-    // Handler for standard message events (fallback)
+    // Handler for standard message events
     eventSource.onmessage = (event) => {
+      console.log('📨 SSE Standard Message received:', event.data);
       try {
         const data: WorkflowStatusResponse = JSON.parse(event.data);
         onUpdate(data);
         if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+            console.log('🏁 Workflow finished (Standard Message), closing stream.');
             eventSource.close();
         }
       } catch (e) {
-        // Ignore parsing errors for standard messages if they are not JSON
+        // Only log error if it looks like JSON but failed
+        if (event.data.trim().startsWith('{')) {
+             console.error('❌ Error parsing SSE Standard Message data', e);
+        }
       }
     };
 
     eventSource.onerror = (error) => {
         // Only trigger error if not cleanly closed
         if (eventSource.readyState !== EventSource.CLOSED) {
+            console.error('⚠️ SSE Connection Error:', error);
             onError(error);
             eventSource.close();
         }

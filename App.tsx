@@ -30,7 +30,7 @@ const App: React.FC = () => {
   // Store multiple active event sources: Map<conversationId, EventSource>
   const activeStreamsRef = useRef<Map<string, EventSource>>(new Map());
 
-  // --- 1. Efficient Hydration (Fixes 8s Load Time) ---
+  // --- 1. Efficient Hydration ---
   useEffect(() => {
     const hydrate = async () => {
       try {
@@ -45,8 +45,7 @@ const App: React.FC = () => {
         const savedRepo = localStorage.getItem('lastRepoUrl');
         if (savedRepo) setRepoUrl(savedRepo);
 
-        // Conversations (Heavy payload)
-        // We defer this slightly to let the UI paint the splash screen first if needed
+        // Conversations
         const savedConvs = localStorage.getItem('conversations');
         if (savedConvs) {
           const parsed = JSON.parse(savedConvs).map((c: any) => ({
@@ -63,7 +62,6 @@ const App: React.FC = () => {
       }
     };
 
-    // Small timeout to allow first paint
     setTimeout(hydrate, 10);
   }, []);
 
@@ -101,8 +99,18 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // --- Real-time Handler (Global for all conversations) ---
+  // --- Helper to cleanup stream ---
+  const closeStream = (conversationId: string) => {
+    const es = activeStreamsRef.current.get(conversationId);
+    if (es) {
+        es.close();
+        activeStreamsRef.current.delete(conversationId);
+    }
+  };
+
+  // --- Real-time Handler (Success) ---
   const handleWorkflowUpdate = (status: WorkflowStatusResponse, conversationId: string) => {
+    // 1. Update Conversations List (Background state)
     setConversations(prevConvs => {
         return prevConvs.map(c => {
             if (c.id !== conversationId) return c;
@@ -113,7 +121,6 @@ const App: React.FC = () => {
             const lastMsg = msgs[lastMsgIndex];
 
             if (lastMsg && lastMsg.sender === 'agent') {
-                // Update existing agent message (streaming effect)
                 const updatedLast = {
                     ...lastMsg,
                     content: status.message,
@@ -124,15 +131,14 @@ const App: React.FC = () => {
                 msgs[lastMsgIndex] = updatedLast;
             }
 
+            // Create a NEW object to ensure React detects change
             return { ...c, messages: msgs };
         });
     });
 
-    // If this update belongs to the CURRENTLY viewed conversation, update the messages view too
+    // 2. Update Messages View (If currently viewing this chat)
     setCurrentConversationId(currId => {
         if (currId === conversationId) {
-            // We duplicate logic here because 'messages' state drives the view
-            // In a more complex app, we'd select 'messages' derived from 'conversations'
             setMessages(prevMsgs => {
                 const lastMsg = prevMsgs[prevMsgs.length - 1];
                 if (lastMsg && lastMsg.sender === 'agent') {
@@ -147,7 +153,6 @@ const App: React.FC = () => {
                 return prevMsgs;
             });
 
-            // Update loading state for current view
             if (status.status === 'COMPLETED' || status.status === 'FAILED') {
                 setIsLoading(false);
             }
@@ -155,19 +160,32 @@ const App: React.FC = () => {
         return currId;
     });
 
-    // Cleanup stream if done
+    // 3. Cleanup if done
     if (status.status === 'COMPLETED' || status.status === 'FAILED') {
-        const es = activeStreamsRef.current.get(conversationId);
-        if (es) {
-            es.close();
-            activeStreamsRef.current.delete(conversationId);
-        }
+        closeStream(conversationId);
     }
+  };
+
+  // --- Real-time Handler (Error) ---
+  // Fixes the "infinite spinner" issue by forcing state to FAILED on stream error
+  const handleWorkflowError = (error: any, conversationId: string) => {
+    console.error(`Stream error for ${conversationId}:`, error);
+    
+    const failStatus: WorkflowStatusResponse = {
+        conversationId,
+        status: 'FAILED',
+        message: 'Connection lost. Please check your network or try again.',
+        agent: 'System',
+        progress: 0
+    };
+
+    // Reuse update logic to force UI into failed state
+    handleWorkflowUpdate(failStatus, conversationId);
+    closeStream(conversationId);
   };
 
   // --- Conversation Management ---
   const startNewChat = () => {
-    // Note: We do NOT close existing streams. Background chats can continue.
     setCurrentConversationId(null);
     setMessages([]);
     setIsRepoLocked(false);
@@ -183,32 +201,27 @@ const App: React.FC = () => {
       setMessages(conv.messages);
       setIsHistoryOpen(false);
       
-      // Determine if this chat is currently running (based on last message)
       const lastMsg = conv.messages[conv.messages.length - 1];
       const isRunning = lastMsg && lastMsg.sender === 'agent' && lastMsg.status === 'RUNNING';
       setIsLoading(isRunning || false);
 
-      // Check if we need to re-attach a stream? 
-      // Ideally streams are kept in 'activeStreamsRef'. 
-      // If the user refreshed the page, the stream is lost. We might need to reconnect.
+      // Attempt to revive stream if running but missing (e.g. after refresh)
       if (isRunning && !activeStreamsRef.current.has(id)) {
-         // Reconnect logic would go here if backend supports re-attaching to existing jobs easily
-         // For now, we assume streams are only live per session.
-         // If a page refresh happened, the stream is dead, but we can try to fetch history to see if it finished.
          try {
+             // Check if it actually finished while we were away
              const historyData = await workflowService.getHistory(id);
              if (historyData.status === 'COMPLETED' || historyData.status === 'FAILED') {
-                 // It finished while we were gone
                  setIsLoading(false);
-                 // Update the specific conversation with final state
+                 // Update with final state
                  const completedMsg: ChatMessage = {
                      ...lastMsg!,
                      status: historyData.status as WorkflowStatus,
-                     // We might want to update content here if the history API returns full content
+                     content: historyData.messages[historyData.messages.length - 1]?.content || lastMsg.content
                  };
-                 // Update local state
-                 setMessages(prev => [...prev.slice(0, -1), completedMsg]);
-                 setConversations(prev => prev.map(c => c.id === id ? {...c, messages: [...c.messages.slice(0,-1), completedMsg]} : c));
+                 // Update state
+                 const updateState = (prev: ChatMessage[]) => [...prev.slice(0, -1), completedMsg];
+                 setMessages(updateState);
+                 setConversations(prev => prev.map(c => c.id === id ? {...c, messages: updateState(c.messages)} : c));
              }
          } catch (e) {
              console.warn("Could not check status of running chat", e);
@@ -250,7 +263,7 @@ const App: React.FC = () => {
       const conversationId = response.conversationId;
       setCurrentConversationId(conversationId);
 
-      // Initialize the placeholder Agent message immediately
+      // Initialize placeholder Agent message
       const agentMsg: ChatMessage = {
         id: `msg_${Date.now()}_a`,
         sender: 'agent',
@@ -264,7 +277,7 @@ const App: React.FC = () => {
       const messagesWithAgent = [...newMessages, agentMsg];
       setMessages(messagesWithAgent);
       
-      // Update Conversation List
+      // Update Conversation List (Prepend new conversation)
       setConversations(prev => {
         const exists = prev.some(c => c.id === conversationId);
         if (exists) {
@@ -280,18 +293,12 @@ const App: React.FC = () => {
       });
 
       // --- START STREAMING (SSE) ---
-      // We store it in the Map so it persists across navigation
-      if (activeStreamsRef.current.has(conversationId)) {
-          activeStreamsRef.current.get(conversationId)?.close();
-      }
+      closeStream(conversationId); // Ensure no dupes
 
       const es = workflowService.connectToWorkflowStream(
         conversationId,
         (data) => handleWorkflowUpdate(data, conversationId),
-        (error) => {
-            console.error("SSE Error:", error);
-            // Optionally handle stream disconnect error visual here
-        }
+        (error) => handleWorkflowError(error, conversationId)
       );
       
       activeStreamsRef.current.set(conversationId, es);
@@ -310,17 +317,12 @@ const App: React.FC = () => {
 
       const messagesWithError = [...newMessages, errorMsg];
       setMessages(messagesWithError);
-
+      
+      // Sync error to conversation list if possible
       if (currentConversationId) {
           setConversations(prev => prev.map(c => 
-              c.id === currentConversationId 
-                  ? { ...c, messages: messagesWithError, timestamp: new Date() } 
-                  : c
+              c.id === currentConversationId ? { ...c, messages: messagesWithError, timestamp: new Date() } : c
           ));
-      } else {
-          // If we failed before getting a conversation ID (e.g., startup failure)
-          // We can't easily save it to a specific ID unless we gen one.
-          // For now, just show in UI.
       }
     }
   };

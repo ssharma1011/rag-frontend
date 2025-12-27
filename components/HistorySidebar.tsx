@@ -32,6 +32,11 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     return lastMsg && lastMsg.sender === 'agent' && lastMsg.status === 'RUNNING';
   };
 
+  // Sort conversations by timestamp (newest first)
+  const sortedConversations = [...conversations].sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex">
       <div 
@@ -49,14 +54,14 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
         </div>
 
         <div className="p-3 flex-1 overflow-y-auto">
-          {conversations.length === 0 ? (
+          {sortedConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-gray-400">
                 <MessageCirclePlus className="w-8 h-8 mb-2 opacity-50" />
                 <span className="text-sm">No history yet</span>
             </div>
           ) : (
             <div className="space-y-2">
-                {conversations.map((conv) => {
+                {sortedConversations.map((conv) => {
                     const running = isConversationRunning(conv);
                     return (
                         <div
@@ -65,7 +70,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                             className={`
                                 group p-3 rounded-xl cursor-pointer transition-all border
                                 ${running 
-                                    ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/50' 
+                                    ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/50 shadow-sm' 
                                     : 'hover:bg-gray-100 dark:hover:bg-gray-800 border-transparent hover:border-gray-200 dark:hover:border-gray-700'}
                             `}
                         >
@@ -83,7 +88,7 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                                     <Link className="w-3 h-3 flex-shrink-0" />
                                     <span className="truncate">{conv.repoUrl.replace('https://', '').replace('http://', '')}</span>
                                 </div>
-                                <span>{formatTime(conv.timestamp)}</span>
+                                <span>{formatTime(new Date(conv.timestamp))}</span>
                             </div>
                         </div>
                     );
