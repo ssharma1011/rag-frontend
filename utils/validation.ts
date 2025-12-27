@@ -5,8 +5,9 @@ export function isValidGitHubUrl(url: string): boolean {
   if (!url.startsWith('https://')) return false;
 
   // GitHub URL pattern: https://github.com/username/repository
-  // Updated to allow subpaths like /tree/branch, /blob/main, etc.
-  const pattern = /^https:\/\/github\.com\/[\w-]+\/[\w.-]+(\/.*)?$/;
+  // Uses [^/]+ to allow any valid characters in username/repo (including dots, hyphens, underscores)
+  // Allows any trailing path structure for tree/blob/issues etc.
+  const pattern = /^https:\/\/github\.com\/[^\/]+\/[^\/]+.*$/;
 
   return pattern.test(url.trim());
 }
