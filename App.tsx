@@ -6,18 +6,68 @@ import HistorySidebar from './components/HistorySidebar';
 import MetricsModal from './components/MetricsModal';
 import { Theme, ChatMessage, Conversation, WorkflowStatus, WorkflowStatusResponse } from './types';
 import { workflowService } from './services/workflowService';
+import { Loader2 } from './components/Icons';
 
 const App: React.FC = () => {
-  // --- Theme State ---
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('theme');
-      if (saved === 'dark' || saved === 'light') return saved;
-      if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
-    }
-    return 'light';
-  });
+  // --- Initialization State ---
+  const [isAppReady, setIsAppReady] = useState(false);
 
+  // --- Theme State ---
+  const [theme, setTheme] = useState<Theme>('light'); // Default to light, hydrate later
+
+  // --- App State ---
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [repoUrl, setRepoUrl] = useState('');
+  const [isRepoLocked, setIsRepoLocked] = useState(false);
+  
+  // UI State
+  const [isLoading, setIsLoading] = useState(false); // Only for current chat input disabled state
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isMetricsOpen, setIsMetricsOpen] = useState(false);
+  
+  // Store multiple active event sources: Map<conversationId, EventSource>
+  const activeStreamsRef = useRef<Map<string, EventSource>>(new Map());
+
+  // --- 1. Efficient Hydration (Fixes 8s Load Time) ---
+  useEffect(() => {
+    const hydrate = async () => {
+      try {
+        // Theme
+        let savedTheme = localStorage.getItem('theme') as Theme;
+        if (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          savedTheme = 'dark';
+        }
+        if (savedTheme) setTheme(savedTheme || 'light');
+
+        // Repo
+        const savedRepo = localStorage.getItem('lastRepoUrl');
+        if (savedRepo) setRepoUrl(savedRepo);
+
+        // Conversations (Heavy payload)
+        // We defer this slightly to let the UI paint the splash screen first if needed
+        const savedConvs = localStorage.getItem('conversations');
+        if (savedConvs) {
+          const parsed = JSON.parse(savedConvs).map((c: any) => ({
+            ...c,
+            timestamp: new Date(c.timestamp),
+            messages: c.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
+          }));
+          setConversations(parsed);
+        }
+      } catch (e) {
+        console.error('Failed to hydrate state', e);
+      } finally {
+        setIsAppReady(true);
+      }
+    };
+
+    // Small timeout to allow first paint
+    setTimeout(hydrate, 10);
+  }, []);
+
+  // --- Theme Effect ---
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
@@ -30,61 +80,94 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
 
-  // --- App State ---
-  const [conversations, setConversations] = useState<Conversation[]>(() => {
-    try {
-      const saved = localStorage.getItem('conversations');
-      if (saved) {
-        return JSON.parse(saved).map((c: any) => ({
-          ...c,
-          timestamp: new Date(c.timestamp),
-          messages: c.messages.map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) }))
-        }));
-      }
-    } catch (e) {
-      console.error('Failed to parse conversations', e);
-    }
-    return [];
-  });
-
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [repoUrl, setRepoUrl] = useState(() => localStorage.getItem('lastRepoUrl') || '');
-  const [isRepoLocked, setIsRepoLocked] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isMetricsOpen, setIsMetricsOpen] = useState(false);
-  
-  // Ref to hold the active EventSource so we can close it on unmount or new chat
-  const eventSourceRef = useRef<EventSource | null>(null);
-
   // --- Persistence ---
   useEffect(() => {
-    localStorage.setItem('conversations', JSON.stringify(conversations));
-  }, [conversations]);
+    if (isAppReady) {
+        localStorage.setItem('conversations', JSON.stringify(conversations));
+    }
+  }, [conversations, isAppReady]);
 
   useEffect(() => {
-    localStorage.setItem('lastRepoUrl', repoUrl);
-  }, [repoUrl]);
+    if (isAppReady) {
+        localStorage.setItem('lastRepoUrl', repoUrl);
+    }
+  }, [repoUrl, isAppReady]);
 
-  // Cleanup EventSource on unmount
+  // Cleanup EventSources on unmount
   useEffect(() => {
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
+      activeStreamsRef.current.forEach(es => es.close());
+      activeStreamsRef.current.clear();
     };
   }, []);
 
+  // --- Real-time Handler (Global for all conversations) ---
+  const handleWorkflowUpdate = (status: WorkflowStatusResponse, conversationId: string) => {
+    setConversations(prevConvs => {
+        return prevConvs.map(c => {
+            if (c.id !== conversationId) return c;
+
+            // Found the conversation to update
+            const msgs = [...c.messages];
+            const lastMsgIndex = msgs.length - 1;
+            const lastMsg = msgs[lastMsgIndex];
+
+            if (lastMsg && lastMsg.sender === 'agent') {
+                // Update existing agent message (streaming effect)
+                const updatedLast = {
+                    ...lastMsg,
+                    content: status.message,
+                    status: status.status,
+                    progress: status.progress,
+                    agent: status.agent
+                };
+                msgs[lastMsgIndex] = updatedLast;
+            }
+
+            return { ...c, messages: msgs };
+        });
+    });
+
+    // If this update belongs to the CURRENTLY viewed conversation, update the messages view too
+    setCurrentConversationId(currId => {
+        if (currId === conversationId) {
+            // We duplicate logic here because 'messages' state drives the view
+            // In a more complex app, we'd select 'messages' derived from 'conversations'
+            setMessages(prevMsgs => {
+                const lastMsg = prevMsgs[prevMsgs.length - 1];
+                if (lastMsg && lastMsg.sender === 'agent') {
+                     return [...prevMsgs.slice(0, -1), {
+                        ...lastMsg,
+                        content: status.message,
+                        status: status.status,
+                        progress: status.progress,
+                        agent: status.agent
+                     }];
+                }
+                return prevMsgs;
+            });
+
+            // Update loading state for current view
+            if (status.status === 'COMPLETED' || status.status === 'FAILED') {
+                setIsLoading(false);
+            }
+        }
+        return currId;
+    });
+
+    // Cleanup stream if done
+    if (status.status === 'COMPLETED' || status.status === 'FAILED') {
+        const es = activeStreamsRef.current.get(conversationId);
+        if (es) {
+            es.close();
+            activeStreamsRef.current.delete(conversationId);
+        }
+    }
+  };
+
   // --- Conversation Management ---
   const startNewChat = () => {
-    // Close existing stream if any
-    if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-    }
-
-    // Clear current ID and messages to show empty state
+    // Note: We do NOT close existing streams. Background chats can continue.
     setCurrentConversationId(null);
     setMessages([]);
     setIsRepoLocked(false);
@@ -92,85 +175,45 @@ const App: React.FC = () => {
   };
 
   const loadConversation = async (id: string) => {
-    // Close existing stream if any when switching
-    if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-    }
-
     const conv = conversations.find(c => c.id === id);
     if (conv) {
       setCurrentConversationId(conv.id);
       setIsRepoLocked(true); 
       setRepoUrl(conv.repoUrl);
-      
-      // Initial load from local state for speed and fallback
       setMessages(conv.messages);
       setIsHistoryOpen(false);
+      
+      // Determine if this chat is currently running (based on last message)
+      const lastMsg = conv.messages[conv.messages.length - 1];
+      const isRunning = lastMsg && lastMsg.sender === 'agent' && lastMsg.status === 'RUNNING';
+      setIsLoading(isRunning || false);
 
-      // Fetch latest history from backend to sync
-      try {
-        const historyData = await workflowService.getHistory(id);
-        
-        if (historyData && historyData.messages.length > 0) {
-            // Map backend messages to frontend format
-            const mappedMessages: ChatMessage[] = historyData.messages.map((m: any, idx: number) => ({
-                id: `hist_${id}_${idx}`,
-                sender: m.role === 'user' ? 'user' : 'agent',
-                content: m.content,
-                timestamp: new Date(m.timestamp || Date.now()),
-                status: (idx === historyData.messages.length - 1 && historyData.status !== 'COMPLETED' ? historyData.status : 'COMPLETED') as WorkflowStatus
-            }));
-
-            setMessages(mappedMessages);
-            
-            // Update local state with fresh data
-            setConversations(prev => prev.map(c => 
-                c.id === id ? { ...c, messages: mappedMessages } : c
-            ));
-        }
-      } catch (err) {
-        console.warn("Failed to sync history from backend, using local copy:", err);
-        // Do NOT clear messages here. We keep the local copy 'conv.messages' we set earlier.
+      // Check if we need to re-attach a stream? 
+      // Ideally streams are kept in 'activeStreamsRef'. 
+      // If the user refreshed the page, the stream is lost. We might need to reconnect.
+      if (isRunning && !activeStreamsRef.current.has(id)) {
+         // Reconnect logic would go here if backend supports re-attaching to existing jobs easily
+         // For now, we assume streams are only live per session.
+         // If a page refresh happened, the stream is dead, but we can try to fetch history to see if it finished.
+         try {
+             const historyData = await workflowService.getHistory(id);
+             if (historyData.status === 'COMPLETED' || historyData.status === 'FAILED') {
+                 // It finished while we were gone
+                 setIsLoading(false);
+                 // Update the specific conversation with final state
+                 const completedMsg: ChatMessage = {
+                     ...lastMsg!,
+                     status: historyData.status as WorkflowStatus,
+                     // We might want to update content here if the history API returns full content
+                 };
+                 // Update local state
+                 setMessages(prev => [...prev.slice(0, -1), completedMsg]);
+                 setConversations(prev => prev.map(c => c.id === id ? {...c, messages: [...c.messages.slice(0,-1), completedMsg]} : c));
+             }
+         } catch (e) {
+             console.warn("Could not check status of running chat", e);
+         }
       }
-    }
-  };
-
-  // --- Real-time Handler ---
-  const handleWorkflowUpdate = (status: WorkflowStatusResponse, conversationId: string) => {
-    setMessages(prev => {
-        // Find if the last message is an agent message that we should update
-        const lastMsg = prev[prev.length - 1];
-        
-        if (lastMsg && lastMsg.sender === 'agent') {
-            // Update existing agent message (streaming effect)
-            const updatedLast = {
-                ...lastMsg,
-                content: status.message,
-                status: status.status,
-                progress: status.progress,
-                agent: status.agent
-            };
-            
-            // Sync with conversation list
-            setConversations(convs => convs.map(c => 
-                c.id === conversationId 
-                    ? { ...c, messages: [...prev.slice(0, -1), updatedLast] } 
-                    : c
-            ));
-
-            return [...prev.slice(0, -1), updatedLast];
-        } else {
-            return prev;
-        }
-    });
-
-    if (status.status === 'COMPLETED' || status.status === 'FAILED') {
-        setIsLoading(false);
-        if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-        }
     }
   };
 
@@ -195,11 +238,6 @@ const App: React.FC = () => {
     const newMessages = [...messages, newUserMsg];
     setMessages(newMessages);
     setIsLoading(true);
-
-    // Close previous stream if exists
-    if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-    }
 
     try {
       const response = await workflowService.startWorkflow({
@@ -226,7 +264,7 @@ const App: React.FC = () => {
       const messagesWithAgent = [...newMessages, agentMsg];
       setMessages(messagesWithAgent);
       
-      // Save initial state to Global Conversation list immediately
+      // Update Conversation List
       setConversations(prev => {
         const exists = prev.some(c => c.id === conversationId);
         if (exists) {
@@ -242,31 +280,37 @@ const App: React.FC = () => {
       });
 
       // --- START STREAMING (SSE) ---
-      eventSourceRef.current = workflowService.connectToWorkflowStream(
+      // We store it in the Map so it persists across navigation
+      if (activeStreamsRef.current.has(conversationId)) {
+          activeStreamsRef.current.get(conversationId)?.close();
+      }
+
+      const es = workflowService.connectToWorkflowStream(
         conversationId,
         (data) => handleWorkflowUpdate(data, conversationId),
         (error) => {
             console.error("SSE Error:", error);
+            // Optionally handle stream disconnect error visual here
         }
       );
+      
+      activeStreamsRef.current.set(conversationId, es);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to start workflow", error);
       setIsLoading(false);
       
       const errorMsg: ChatMessage = {
           id: `err_${Date.now()}`,
           sender: 'agent',
-          content: '❌ **Error**: Failed to start workflow.\n\nPlease ensure the backend is running and the URL is correct.',
+          content: `❌ **Error**: ${error.message || 'Unknown error occurred'}`,
           timestamp: new Date(),
           status: 'FAILED'
       };
 
-      // 1. Update Current View
       const messagesWithError = [...newMessages, errorMsg];
       setMessages(messagesWithError);
 
-      // 2. CRITICAL: Persist this error state to the Conversations List
       if (currentConversationId) {
           setConversations(prev => prev.map(c => 
               c.id === currentConversationId 
@@ -274,17 +318,22 @@ const App: React.FC = () => {
                   : c
           ));
       } else {
-          const tempId = `failed_${Date.now()}`;
-          setCurrentConversationId(tempId);
-          setConversations(prev => [{
-              id: tempId,
-              repoUrl: newRepoUrl,
-              messages: messagesWithError,
-              timestamp: new Date()
-          }, ...prev]);
+          // If we failed before getting a conversation ID (e.g., startup failure)
+          // We can't easily save it to a specific ID unless we gen one.
+          // For now, just show in UI.
       }
     }
   };
+
+  // --- Loading Screen ---
+  if (!isAppReady) {
+    return (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 text-gray-400">
+            <Loader2 className="w-10 h-10 animate-spin mb-4 text-blue-500" />
+            <p className="font-mono text-sm">Loading AutoFlow...</p>
+        </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans relative">

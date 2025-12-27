@@ -17,7 +17,7 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
         {/* Header Badge */}
         <div className="flex items-center gap-2 mb-2 ml-1">
             <div className={`
-                w-6 h-6 rounded-md flex items-center justify-center
+                w-6 h-6 rounded-md flex items-center justify-center transition-colors duration-300
                 ${isRunning ? 'bg-blue-500/10 text-blue-500' : 
                   isCompleted ? 'bg-green-500/10 text-green-500' :
                   isFailed ? 'bg-red-500/10 text-red-500' : 'bg-gray-500/10 text-gray-500'}
@@ -35,17 +35,18 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
 
         {/* Card */}
         <div className={`
-            relative overflow-hidden rounded-2xl border transition-colors duration-500
+            relative overflow-hidden rounded-2xl border transition-all duration-500
             ${isRunning 
-                ? 'bg-white dark:bg-gray-800 border-blue-200 dark:border-blue-900 shadow-[0_0_20px_rgba(37,99,235,0.1)]' 
+                ? 'bg-white dark:bg-gray-800 border-blue-400 dark:border-blue-600 shadow-[0_0_30px_rgba(37,99,235,0.15)] ring-1 ring-blue-500/20' 
                 : 'bg-white/80 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700/50 shadow-sm'}
         `}>
-            {/* Thinking Progress Line */}
-            {isRunning && message.progress && (
-                 <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-100 dark:bg-blue-900/30">
+            
+            {/* PROGRESS BAR - Prominent */}
+            {isRunning && (
+                 <div className="w-full h-1 bg-gray-100 dark:bg-gray-700">
                     <div 
-                        className="h-full bg-blue-500 shadow-[0_0_10px_#3b82f6] transition-all duration-700 ease-out"
-                        style={{ width: `${message.progress * 100}%` }}
+                        className="h-full bg-blue-500 shadow-[0_0_10px_#3b82f6] transition-all duration-500 ease-out"
+                        style={{ width: `${(message.progress || 0) * 100}%` }}
                     />
                  </div>
             )}
@@ -53,9 +54,12 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
             <div className="p-5 md:p-6">
                 {/* Status Indicator inside card */}
                 {isRunning && (
-                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-4 text-sm font-medium animate-pulse">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Processing workflow...</span>
+                    <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-700/50">
+                        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-medium animate-pulse">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Processing workflow... {Math.round((message.progress || 0) * 100)}%</span>
+                        </div>
+                        <span className="text-xs text-gray-400 uppercase tracking-wider font-semibold">Active</span>
                     </div>
                 )}
                 
@@ -63,6 +67,13 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
                     <div className="flex items-center gap-2 text-green-600 dark:text-green-400 mb-4 text-sm font-medium">
                         <CheckCircle2 className="w-4 h-4" />
                         <span>Workflow completed</span>
+                    </div>
+                )}
+
+                {isFailed && (
+                    <div className="flex items-center gap-2 text-red-600 dark:text-red-400 mb-4 text-sm font-medium">
+                        <XCircle className="w-4 h-4" />
+                        <span>Workflow failed</span>
                     </div>
                 )}
 

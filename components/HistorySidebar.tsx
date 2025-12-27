@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Link, MessageCirclePlus } from './Icons';
+import { X, Link, MessageCirclePlus, Loader2 } from './Icons';
 import { Conversation } from '../types';
 
 interface HistorySidebarProps {
@@ -27,6 +27,11 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
     return date.toLocaleDateString();
   };
 
+  const isConversationRunning = (conv: Conversation) => {
+    const lastMsg = conv.messages[conv.messages.length - 1];
+    return lastMsg && lastMsg.sender === 'agent' && lastMsg.status === 'RUNNING';
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex">
       <div 
@@ -51,24 +56,38 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
             </div>
           ) : (
             <div className="space-y-2">
-                {conversations.map((conv) => (
-                <div
-                    key={conv.id}
-                    onClick={() => onSelectConversation(conv.id)}
-                    className="group p-3 rounded-xl cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-all border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
-                >
-                    <div className="text-sm font-medium text-gray-800 dark:text-gray-200 line-clamp-2 mb-2 leading-relaxed">
-                    {conv.messages[0]?.content || "New Conversation"}
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
-                    <div className="flex items-center gap-1.5 truncate max-w-[65%] text-gray-500 dark:text-gray-500 group-hover:text-blue-500 transition-colors">
-                        <Link className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate">{conv.repoUrl.replace('https://', '').replace('http://', '')}</span>
-                    </div>
-                    <span>{formatTime(conv.timestamp)}</span>
-                    </div>
-                </div>
-                ))}
+                {conversations.map((conv) => {
+                    const running = isConversationRunning(conv);
+                    return (
+                        <div
+                            key={conv.id}
+                            onClick={() => onSelectConversation(conv.id)}
+                            className={`
+                                group p-3 rounded-xl cursor-pointer transition-all border
+                                ${running 
+                                    ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/50' 
+                                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 border-transparent hover:border-gray-200 dark:hover:border-gray-700'}
+                            `}
+                        >
+                            <div className="flex justify-between items-start gap-2 mb-2">
+                                <div className="text-sm font-medium text-gray-800 dark:text-gray-200 line-clamp-2 leading-relaxed flex-1">
+                                    {conv.messages[0]?.content || "New Conversation"}
+                                </div>
+                                {running && (
+                                    <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin flex-shrink-0 mt-1" />
+                                )}
+                            </div>
+                            
+                            <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
+                                <div className="flex items-center gap-1.5 truncate max-w-[65%] text-gray-500 dark:text-gray-500 group-hover:text-blue-500 transition-colors">
+                                    <Link className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{conv.repoUrl.replace('https://', '').replace('http://', '')}</span>
+                                </div>
+                                <span>{formatTime(conv.timestamp)}</span>
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
           )}
         </div>

@@ -59,6 +59,26 @@ const getMockFailures = (): LLMCallMetrics[] => ([
   }
 ]);
 
+// Helper to sanitize errors
+const handleApiError = async (response: Response) => {
+  const contentType = response.headers.get("content-type");
+  let errorMessage = `API Error (${response.status})`;
+
+  if (contentType && contentType.indexOf("application/json") !== -1) {
+    try {
+      const json = await response.json();
+      errorMessage = json.message || json.error || errorMessage;
+    } catch {
+      // ignore json parse error
+    }
+  } else {
+    // If text/html (likely a stack trace), do NOT show it.
+    errorMessage = `The server encountered an error (${response.status}). Please check backend logs.`;
+  }
+  
+  throw new Error(errorMessage);
+};
+
 export const workflowService = {
   /**
    * Start a new workflow
@@ -86,17 +106,24 @@ export const workflowService = {
       headers = { 'Content-Type': 'application/json' };
     }
 
-    const response = await fetch(`${API_BASE_URL}/workflows/start`, {
-      method: 'POST',
-      headers,
-      body,
-    });
+    try {
+      const response = await fetch(`${API_BASE_URL}/workflows/start`, {
+        method: 'POST',
+        headers,
+        body,
+      });
 
-    if (!response.ok) {
-      throw new Error(`API Error (${response.status}): ${await response.text()}`);
+      if (!response.ok) {
+        await handleApiError(response);
+      }
+
+      return await response.json();
+    } catch (e: any) {
+      if (e.message.includes('Failed to fetch')) {
+        throw new Error("Unable to connect to the server. Is the backend running?");
+      }
+      throw e;
     }
-
-    return await response.json();
   },
 
   /**
@@ -156,16 +183,20 @@ export const workflowService = {
    * Send developer response
    */
   respondToWorkflow: async (conversationId: string, responseText: string): Promise<WorkflowStatusResponse> => {
-    const response = await fetch(`${API_BASE_URL}/workflows/${conversationId}/respond`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ response: responseText }),
-    });
+    try {
+      const response = await fetch(`${API_BASE_URL}/workflows/${conversationId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ response: responseText }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`API Error (${response.status})`);
+      if (!response.ok) {
+        await handleApiError(response);
+      }
+      return await response.json();
+    } catch (e: any) {
+      throw e;
     }
-    return await response.json();
   },
 
   /**
@@ -174,7 +205,7 @@ export const workflowService = {
   getHistory: async (conversationId: string): Promise<{ messages: any[], status: string }> => {
     try {
       const response = await fetch(`${API_BASE_URL}/workflows/${conversationId}/history`);
-      if (!response.ok) throw new Error(`API Error (${response.status})`);
+      if (!response.ok) await handleApiError(response);
       const data = await response.json();
       return { messages: data.messages || [], status: data.status };
     } catch (e) {
