@@ -25,5 +25,7 @@ export {
   DollarSign,
   Link,
   Activity,
-  AlertOctagon
+  AlertOctagon,
+  Copy,
+  Check
 } from 'lucide-react';

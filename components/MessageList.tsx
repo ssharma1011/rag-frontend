@@ -42,17 +42,24 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
     const lastMessage = messages[messages.length - 1];
     const isUserMessage = lastMessage.sender === 'user';
 
+    // If it's a user message, force scroll to bottom always
     if (isUserMessage) {
       scrollToBottom();
     } else {
+      // If agent message, only scroll if we were already at the bottom
       if (autoScrollEnabled) {
         scrollToBottom();
       } else {
+        // Only show notification if we are NOT auto-scrolling (user scrolled up)
         setShowNewMessagesBtn(true);
       }
     }
+  // Remove autoScrollEnabled from dependency array.
+  // We only want to evaluate this logic when *messages* change.
+  // If the user scrolls up (changing autoScrollEnabled), we do NOT want to show the button immediately.
+  // The button should only appear if a NEW message/token arrives while they are scrolled up.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, autoScrollEnabled]);
+  }, [messages]);
 
   return (
     <div className="relative w-full h-full flex flex-col">

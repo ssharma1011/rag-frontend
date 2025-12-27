@@ -1,11 +1,78 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { User, Bot, Loader2, CheckCircle2, XCircle, Clock, Terminal } from './Icons';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+// @ts-ignore
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { User, Bot, Loader2, CheckCircle2, XCircle, Clock, Terminal, Check as CheckIcon, Copy } from './Icons';
 import { ChatMessage as IChatMessage } from '../types';
 
 interface ChatMessageProps {
   message: IChatMessage;
 }
+
+// Custom Code Block Component with Copy Functionality
+const CodeBlock = ({ inline, className, children, ...props }: any) => {
+  const [isCopied, setIsCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || '');
+  const language = match ? match[1] : 'text';
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(String(children).replace(/\n$/, ''));
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  if (inline) {
+    return (
+      <code className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1.5 py-0.5 rounded text-sm font-mono border border-gray-200 dark:border-gray-700" {...props}>
+        {children}
+      </code>
+    );
+  }
+
+  return (
+    <div className="relative group my-4 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-[#1e1e1e]">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-[#252526] border-b border-gray-700">
+        <span className="text-xs text-gray-400 font-mono lowercase">{language}</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+        >
+          {isCopied ? (
+            <>
+              <CheckIcon className="w-3.5 h-3.5 text-green-500" />
+              <span className="text-green-500">Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      
+      {/* Code */}
+      <SyntaxHighlighter
+        style={vscDarkPlus}
+        language={language}
+        PreTag="div"
+        customStyle={{
+            margin: 0,
+            borderRadius: 0,
+            padding: '1.5rem',
+            background: 'transparent',
+            fontSize: '0.875rem',
+            lineHeight: '1.5',
+        }}
+        {...props}
+      >
+        {String(children).replace(/\n$/, '')}
+      </SyntaxHighlighter>
+    </div>
+  );
+};
 
 const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
   const isRunning = message.status === 'RUNNING';
@@ -13,7 +80,7 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
   const isFailed = message.status === 'FAILED';
 
   return (
-    <div className="flex flex-col mb-8 animate-slide-up">
+    <div className="flex flex-col mb-8 animate-slide-up w-full">
         {/* Header Badge */}
         <div className="flex items-center gap-2 mb-2 ml-1">
             <div className={`
@@ -35,7 +102,7 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
 
         {/* Card */}
         <div className={`
-            relative overflow-hidden rounded-2xl border transition-all duration-500
+            relative overflow-hidden rounded-2xl border transition-all duration-500 w-full
             ${isRunning 
                 ? 'bg-white dark:bg-gray-800 border-blue-400 dark:border-blue-600 shadow-[0_0_30px_rgba(37,99,235,0.15)] ring-1 ring-blue-500/20' 
                 : 'bg-white/80 dark:bg-gray-800/80 border-gray-200 dark:border-gray-700/50 shadow-sm'}
@@ -51,7 +118,7 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
                  </div>
             )}
 
-            <div className="p-5 md:p-6">
+            <div className="p-5 md:p-6 w-full">
                 {/* Status Indicator inside card */}
                 {isRunning && (
                     <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100 dark:border-gray-700/50">
@@ -78,8 +145,12 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
                 )}
 
                 {/* Content */}
-                <div className="markdown-body prose prose-sm md:prose-base dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 font-normal leading-relaxed">
-                    <ReactMarkdown>
+                <div className="markdown-body prose prose-sm md:prose-base dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 font-normal leading-relaxed w-full">
+                    <ReactMarkdown
+                        components={{
+                            code: CodeBlock
+                        }}
+                    >
                         {message.content}
                     </ReactMarkdown>
                 </div>
@@ -92,7 +163,7 @@ const AgentMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
 const UserMessage: React.FC<{ message: IChatMessage }> = ({ message }) => {
   return (
     <div className="flex justify-end mb-8 animate-slide-up">
-        <div className="max-w-2xl">
+        <div className="max-w-2xl w-full">
             <div className="flex justify-end items-center gap-2 mb-2 mr-1">
                  <span className="text-[10px] text-gray-400 font-mono">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
