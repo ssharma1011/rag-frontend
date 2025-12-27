@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Github, FileText, ChevronUp, ChevronDown, Upload, CheckCircle2 } from './Icons';
+import { Send, Link, FileText, ChevronUp, ChevronDown, Upload, CheckCircle2 } from './Icons';
 import { detectLogs, countLogLines, extractLogs, extractRequirement } from '../utils/logDetection';
 import { isValidGitHubUrl } from '../utils/validation';
 import FileUpload from './FileUpload';
@@ -124,14 +124,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700/50' 
                 : 'bg-white/50 dark:bg-gray-900/30 border-gray-200/50 dark:border-gray-700/50 hover:border-blue-300 dark:hover:border-blue-700 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/10 focus-within:bg-white dark:focus-within:bg-gray-900'}
         `}>
-            <Github className={`w-3.5 h-3.5 shrink-0 ${isRepoLocked ? 'text-green-500' : 'text-gray-400 group-focus-within:text-blue-500'}`} />
+            <Link className={`w-3.5 h-3.5 shrink-0 ${isRepoLocked ? 'text-green-500' : 'text-gray-400 group-focus-within:text-blue-500'}`} />
             
             <div className="flex-1 relative min-w-0">
                 <input
                     type="text"
                     value={repoUrl}
                     onChange={(e) => { setRepoUrl(e.target.value); validateRepo(e.target.value); }}
-                    placeholder="Paste GitHub repository URL..."
+                    placeholder="Repository URL (GitHub, GitLab, etc.)"
                     disabled={isRepoLocked}
                     className={`
                         w-full bg-transparent border-none outline-none text-xs font-mono truncate

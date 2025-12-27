@@ -1,13 +1,10 @@
 export function isValidGitHubUrl(url: string): boolean {
   if (!url) return false;
 
-  // Must be HTTPS
-  if (!url.startsWith('https://')) return false;
-
-  // GitHub URL pattern: https://github.com/username/repository
-  // Uses [^/]+ to allow any valid characters in username/repo (including dots, hyphens, underscores)
-  // Allows any trailing path structure for tree/blob/issues etc.
-  const pattern = /^https:\/\/github\.com\/[^\/]+\/[^\/]+.*$/;
+  // Relaxed validation: Allow any HTTPS or HTTP URL
+  // This supports GitHub, GitLab, Bitbucket, Azure DevOps, etc.
+  // We just ensure it starts with http/https and has some content.
+  const pattern = /^https?:\/\/.+$/;
 
   return pattern.test(url.trim());
 }

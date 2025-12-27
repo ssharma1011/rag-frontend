@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Github, MessageCirclePlus } from './Icons';
+import { X, Link, MessageCirclePlus } from './Icons';
 import { Conversation } from '../types';
 
 interface HistorySidebarProps {
@@ -62,8 +62,8 @@ const HistorySidebar: React.FC<HistorySidebarProps> = ({
                     </div>
                     <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
                     <div className="flex items-center gap-1.5 truncate max-w-[65%] text-gray-500 dark:text-gray-500 group-hover:text-blue-500 transition-colors">
-                        <Github className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate">{conv.repoUrl.replace('https://github.com/', '')}</span>
+                        <Link className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{conv.repoUrl.replace('https://', '').replace('http://', '')}</span>
                     </div>
                     <span>{formatTime(conv.timestamp)}</span>
                     </div>

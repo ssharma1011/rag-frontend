@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, History, MessageCirclePlus, BarChart2, Moon, Sun, Github } from './Icons';
+import { Home, History, MessageCirclePlus, BarChart2, Moon, Sun, Link } from './Icons';
 import { Theme } from '../types';
 
 interface HeaderProps {
@@ -56,9 +56,9 @@ const Header: React.FC<HeaderProps> = ({
             {/* Repo chip (only if locked) */}
             {isRepoLocked && (
                 <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-100/50 dark:bg-gray-900/50 rounded-full border border-gray-200/50 dark:border-gray-700/50 mr-2 backdrop-blur-md">
-                    <Github className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                    <Link className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
                     <span className="text-xs font-mono text-gray-600 dark:text-gray-300 max-w-[150px] truncate">
-                        {repoUrl.replace('https://github.com/', '')}
+                        {repoUrl.replace('https://', '').replace('http://', '')}
                     </span>
                 </div>
             )}

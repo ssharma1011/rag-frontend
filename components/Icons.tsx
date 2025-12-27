@@ -22,5 +22,6 @@ export {
   ArrowDown,
   Terminal,
   AlertTriangle,
-  DollarSign
+  DollarSign,
+  Link
 } from 'lucide-react';
