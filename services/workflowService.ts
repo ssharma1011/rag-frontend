@@ -158,12 +158,38 @@ export const workflowService = {
     if (conversationId.startsWith(SIMULATION_PREFIX)) {
         console.log(`🔌 Connected to Simulated Stream: ${conversationId}`);
         let progress = 0.05;
+        
+        // Define simulation steps with actual code block for testing
         const steps = [
             { msg: "Analyzing requirements...", agent: "RequirementAnalyst" },
             { msg: "Scanning repository structure...", agent: "RepoScanner" },
             { msg: "Identifying relevant files...", agent: "ContextBuilder" },
             { msg: "Drafting solution plan...", agent: "Architect" },
-            { msg: "Generating code changes...", agent: "CodeGenerator" },
+            { 
+                msg: `Generating code changes...\n\nHere is the proposed Python implementation:\n\n\`\`\`python
+import time
+
+def optimized_process(data):
+    """
+    Process data with improved efficiency.
+    """
+    results = []
+    for item in data:
+        if item.is_valid():
+            # Apply transformation
+            results.append(item.transform())
+    
+    return results
+
+class DataHandler:
+    def __init__(self, source):
+        self.source = source
+        
+    def sync(self):
+        print(f"Syncing from {self.source}")
+\`\`\`\n\nReviewing syntax...`, 
+                agent: "CodeGenerator" 
+            },
             { msg: "Running static analysis...", agent: "Reviewer" },
             { msg: "Finalizing response...", agent: "System" },
             { msg: "Done. Simulation complete.", agent: "System", status: "COMPLETED" }
@@ -192,7 +218,7 @@ export const workflowService = {
             stepIndex++;
             if (stepIndex >= steps.length) clearInterval(interval);
 
-        }, 1500); // Update every 1.5 seconds
+        }, 2000); // Slower updates (2s) to read the code
 
         // Return a fake EventSource object that allows 'close'
         return { close: () => clearInterval(interval) } as any;
