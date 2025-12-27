@@ -104,7 +104,7 @@ const App: React.FC = () => {
       setIsRepoLocked(true); 
       setRepoUrl(conv.repoUrl);
       
-      // Initial load from local state for speed
+      // Initial load from local state for speed and fallback
       setMessages(conv.messages);
       setIsHistoryOpen(false);
 
@@ -112,24 +112,26 @@ const App: React.FC = () => {
       try {
         const historyData = await workflowService.getHistory(id);
         
-        // Map backend messages to frontend format
-        const mappedMessages: ChatMessage[] = historyData.messages.map((m: any, idx: number) => ({
-            id: `hist_${id}_${idx}`,
-            sender: m.role === 'user' ? 'user' : 'agent',
-            content: m.content,
-            timestamp: new Date(m.timestamp || Date.now()),
-            status: (idx === historyData.messages.length - 1 && historyData.status !== 'COMPLETED' ? historyData.status : 'COMPLETED') as WorkflowStatus
-        }));
+        if (historyData && historyData.messages.length > 0) {
+            // Map backend messages to frontend format
+            const mappedMessages: ChatMessage[] = historyData.messages.map((m: any, idx: number) => ({
+                id: `hist_${id}_${idx}`,
+                sender: m.role === 'user' ? 'user' : 'agent',
+                content: m.content,
+                timestamp: new Date(m.timestamp || Date.now()),
+                status: (idx === historyData.messages.length - 1 && historyData.status !== 'COMPLETED' ? historyData.status : 'COMPLETED') as WorkflowStatus
+            }));
 
-        setMessages(mappedMessages);
-        
-        // Update local state with fresh data
-        setConversations(prev => prev.map(c => 
-            c.id === id ? { ...c, messages: mappedMessages } : c
-        ));
-
+            setMessages(mappedMessages);
+            
+            // Update local state with fresh data
+            setConversations(prev => prev.map(c => 
+                c.id === id ? { ...c, messages: mappedMessages } : c
+            ));
+        }
       } catch (err) {
-        console.error("Failed to sync history from backend:", err);
+        console.warn("Failed to sync history from backend, using local copy:", err);
+        // Do NOT clear messages here. We keep the local copy 'conv.messages' we set earlier.
       }
     }
   };
@@ -144,7 +146,7 @@ const App: React.FC = () => {
             // Update existing agent message (streaming effect)
             const updatedLast = {
                 ...lastMsg,
-                content: status.message, // Assuming backend sends full accumulated text or we append. Usually SSE sends full snapshot or delta. Here assuming snapshot based on previous logic.
+                content: status.message,
                 status: status.status,
                 progress: status.progress,
                 agent: status.agent
@@ -159,9 +161,7 @@ const App: React.FC = () => {
 
             return [...prev.slice(0, -1), updatedLast];
         } else {
-            // Edge case: Agent message doesn't exist yet (rare with SSE start delay), append it
-            // Or if previous was user, append new agent message
-            return prev; // Should be handled by initialization in handleSendMessage
+            return prev;
         }
     });
 
@@ -226,7 +226,7 @@ const App: React.FC = () => {
       const messagesWithAgent = [...newMessages, agentMsg];
       setMessages(messagesWithAgent);
       
-      // Save initial state
+      // Save initial state to Global Conversation list immediately
       setConversations(prev => {
         const exists = prev.some(c => c.id === conversationId);
         if (exists) {
@@ -247,23 +247,46 @@ const App: React.FC = () => {
         (data) => handleWorkflowUpdate(data, conversationId),
         (error) => {
             console.error("SSE Error:", error);
-            // Only stop loading if we are fairly sure it's a fatal error, 
-            // otherwise SSE might just be reconnecting.
-            // For now, we assume close() logic in service handles fatal.
-            // We can add a timeout check here if needed.
         }
       );
 
     } catch (error) {
       console.error("Failed to start workflow", error);
       setIsLoading(false);
-      setMessages(prev => [...prev, {
+      
+      const errorMsg: ChatMessage = {
           id: `err_${Date.now()}`,
           sender: 'agent',
-          content: '❌ **Error**: Failed to start workflow.\n\nPlease ensure the backend is running.',
+          content: '❌ **Error**: Failed to start workflow.\n\nPlease ensure the backend is running and the URL is correct.',
           timestamp: new Date(),
           status: 'FAILED'
-      }]);
+      };
+
+      // 1. Update Current View
+      const messagesWithError = [...newMessages, errorMsg];
+      setMessages(messagesWithError);
+
+      // 2. CRITICAL: Persist this error state to the Conversations List
+      // If we don't do this, the sidebar/history will never know this conversation failed.
+      if (currentConversationId) {
+          // If we already had an ID (existing chat)
+          setConversations(prev => prev.map(c => 
+              c.id === currentConversationId 
+                  ? { ...c, messages: messagesWithError, timestamp: new Date() } 
+                  : c
+          ));
+      } else {
+          // If this was a BRAND NEW chat that failed immediately
+          // Create a temporary ID so it saves in history
+          const tempId = `failed_${Date.now()}`;
+          setCurrentConversationId(tempId);
+          setConversations(prev => [{
+              id: tempId,
+              repoUrl: newRepoUrl,
+              messages: messagesWithError,
+              timestamp: new Date()
+          }, ...prev]);
+      }
     }
   };
 
@@ -272,7 +295,7 @@ const App: React.FC = () => {
       <Header
         theme={theme}
         toggleTheme={toggleTheme}
-        showHistoryButton={true} // Always show history button for access
+        showHistoryButton={true} 
         repoUrl={repoUrl}
         isRepoLocked={isRepoLocked}
         onHistoryClick={() => setIsHistoryOpen(true)}
