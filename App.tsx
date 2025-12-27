@@ -4,7 +4,7 @@ import MessageList from './components/MessageList';
 import ChatInput from './components/ChatInput';
 import HistorySidebar from './components/HistorySidebar';
 import MetricsModal from './components/MetricsModal';
-import { Theme, ChatMessage, Conversation, WorkflowStatus, WorkflowStatusResponse } from './types';
+import { Theme, ChatMessage, Conversation, WorkflowStatusResponse } from './types';
 import { workflowService } from './services/workflowService';
 import { Loader2 } from './components/Icons';
 
@@ -13,7 +13,7 @@ const App: React.FC = () => {
   const [isAppReady, setIsAppReady] = useState(false);
 
   // --- Theme State ---
-  const [theme, setTheme] = useState<Theme>('light'); // Default to light, hydrate later
+  const [theme, setTheme] = useState<Theme>('light');
 
   // --- App State ---
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -23,11 +23,11 @@ const App: React.FC = () => {
   const [isRepoLocked, setIsRepoLocked] = useState(false);
   
   // UI State
-  const [isLoading, setIsLoading] = useState(false); // Only for current chat input disabled state
+  const [isLoading, setIsLoading] = useState(false); 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isMetricsOpen, setIsMetricsOpen] = useState(false);
   
-  // Store multiple active event sources: Map<conversationId, EventSource>
+  // Store active event sources to prevent duplicate streams and allow cleanup
   const activeStreamsRef = useRef<Map<string, EventSource>>(new Map());
 
   // --- 1. Efficient Hydration ---
@@ -108,14 +108,14 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Real-time Handler (Success) ---
+  // --- Real-time Handler ---
+  // Uses functional updates to avoid stale closures
   const handleWorkflowUpdate = (status: WorkflowStatusResponse, conversationId: string) => {
     // 1. Update Conversations List (Background state)
     setConversations(prevConvs => {
         return prevConvs.map(c => {
             if (c.id !== conversationId) return c;
 
-            // Found the conversation to update
             const msgs = [...c.messages];
             const lastMsgIndex = msgs.length - 1;
             const lastMsg = msgs[lastMsgIndex];
@@ -131,13 +131,13 @@ const App: React.FC = () => {
                 msgs[lastMsgIndex] = updatedLast;
             }
 
-            // Create a NEW object to ensure React detects change
             return { ...c, messages: msgs };
         });
     });
 
     // 2. Update Messages View (If currently viewing this chat)
     setCurrentConversationId(currId => {
+        // We check currId inside the callback to ensure we have the latest value
         if (currId === conversationId) {
             setMessages(prevMsgs => {
                 const lastMsg = prevMsgs[prevMsgs.length - 1];
@@ -166,8 +166,7 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Real-time Handler (Error) ---
-  // Fixes the "infinite spinner" issue by forcing state to FAILED on stream error
+  // --- Error Handler for Stream ---
   const handleWorkflowError = (error: any, conversationId: string) => {
     console.error(`Stream error for ${conversationId}:`, error);
     
@@ -179,12 +178,11 @@ const App: React.FC = () => {
         progress: 0
     };
 
-    // Reuse update logic to force UI into failed state
     handleWorkflowUpdate(failStatus, conversationId);
     closeStream(conversationId);
   };
 
-  // --- Conversation Management ---
+  // --- Conversation Logic ---
   const startNewChat = () => {
     setCurrentConversationId(null);
     setMessages([]);
@@ -196,46 +194,46 @@ const App: React.FC = () => {
     const conv = conversations.find(c => c.id === id);
     if (!conv) return;
 
+    // 1. Set Context
     setCurrentConversationId(conv.id);
     setIsRepoLocked(true); 
     setRepoUrl(conv.repoUrl);
-    
-    // 1. Optimistic Load from Local Storage
-    setMessages(conv.messages);
     setIsHistoryOpen(false);
     
+    // 2. Optimistic Load (Instant UI feedback)
+    setMessages(conv.messages);
+    
+    // Check local state to show loading spinner immediately if applicable
     const lastMsgLocal = conv.messages[conv.messages.length - 1];
     const isRunningLocal = lastMsgLocal && lastMsgLocal.sender === 'agent' && lastMsgLocal.status === 'RUNNING';
-    
-    // Show loading based on local state initially
     setIsLoading(isRunningLocal || false); 
 
     try {
-        // 2. Fetch Authoritative History from Backend
+        // 3. Fetch Full History from Server
+        // This ensures we get any messages we might have missed while offline/away
         console.log(`Fetching history for conversation: ${id}`);
         const historyData = await workflowService.getHistory(id);
         
-        // Transform timestamps from ISO string to Date objects
         const fetchedMessages: ChatMessage[] = historyData.messages.map((m: any) => ({
             ...m,
             timestamp: new Date(m.timestamp)
         }));
 
-        // Update Messages View with fresh data
+        // Update UI with fresh data
         setMessages(fetchedMessages);
 
-        // Update Conversations List with fresh data
+        // Update Background List
         setConversations(prev => prev.map(c => 
             c.id === id ? { ...c, messages: fetchedMessages, timestamp: new Date() } : c
         ));
 
-        // 3. Handle Status & Stream Resumption
-        const serverStatus = historyData.status; // 'RUNNING', 'COMPLETED', etc.
+        // 4. Resume Stream if needed
+        const serverStatus = historyData.status; 
         
         if (serverStatus === 'RUNNING') {
             setIsLoading(true);
 
-            // Check if we need to connect/reconnect stream
+            // Reconnect if not already connected
             if (!activeStreamsRef.current.has(id)) {
                 console.log(`🔄 Resuming disconnected stream for conversation: ${id}`);
                 const es = workflowService.connectToWorkflowStream(
@@ -246,20 +244,15 @@ const App: React.FC = () => {
                 activeStreamsRef.current.set(id, es);
             }
         } else {
-            // It is finished on server
             setIsLoading(false);
-            // If we had a local stream but server says done, close it
-            closeStream(id);
+            closeStream(id); // Clean up any stale streams
         }
 
     } catch (e) {
         console.warn(`Failed to sync history for ${id} (using local data)`, e);
-        // Fallback: If local said running, we preserve that state, 
-        // effectively waiting for user action or a later refresh if network is down.
     }
   };
 
-  // --- Messaging Logic ---
   const handleSendMessage = async (data: {
     content: string;
     repoUrl: string;
@@ -292,7 +285,7 @@ const App: React.FC = () => {
       const conversationId = response.conversationId;
       setCurrentConversationId(conversationId);
 
-      // Initialize placeholder Agent message
+      // Placeholder Agent Message
       const agentMsg: ChatMessage = {
         id: `msg_${Date.now()}_a`,
         sender: 'agent',
@@ -306,7 +299,7 @@ const App: React.FC = () => {
       const messagesWithAgent = [...newMessages, agentMsg];
       setMessages(messagesWithAgent);
       
-      // Update Conversation List (Prepend new conversation)
+      // Add to Conversation List
       setConversations(prev => {
         const exists = prev.some(c => c.id === conversationId);
         if (exists) {
@@ -321,8 +314,8 @@ const App: React.FC = () => {
         }
       });
 
-      // --- START STREAMING (SSE) ---
-      closeStream(conversationId); // Ensure no dupes
+      // Start Stream
+      closeStream(conversationId); 
 
       const es = workflowService.connectToWorkflowStream(
         conversationId,
@@ -347,7 +340,6 @@ const App: React.FC = () => {
       const messagesWithError = [...newMessages, errorMsg];
       setMessages(messagesWithError);
       
-      // Sync error to conversation list if possible
       if (currentConversationId) {
           setConversations(prev => prev.map(c => 
               c.id === currentConversationId ? { ...c, messages: messagesWithError, timestamp: new Date() } : c
@@ -356,7 +348,6 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Loading Screen ---
   if (!isAppReady) {
     return (
         <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 text-gray-400">
