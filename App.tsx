@@ -410,17 +410,18 @@ const App: React.FC = () => {
         onHistoryClick={() => setIsHistoryOpen(true)}
         onNewChat={startNewChat}
         onMetricsClick={() => setIsMetricsOpen(true)}
-        className="absolute top-0 left-0 right-0 w-full"
+        className="absolute top-0 left-0 right-0 w-full max-w-[1600px] mx-auto"
       />
 
-      <div className="flex-1 relative flex flex-col max-w-5xl mx-auto w-full h-full">
+      <div className="flex-1 relative flex flex-col max-w-[1600px] mx-auto w-full h-full">
         <MessageList 
             messages={messages} 
             isLoading={isLoading} 
+            theme={theme}
         />
         
         <div className="absolute bottom-0 left-0 right-0 px-4 pb-6 pt-2 z-20 pointer-events-none">
-            <div className="pointer-events-auto">
+            <div className="pointer-events-auto max-w-5xl mx-auto">
                 <ChatInput 
                     disabled={isLoading}
                     initialRepoUrl={repoUrl}

@@ -1,14 +1,15 @@
 import React, { useRef, useState, useEffect } from 'react';
 import ChatMessage from './ChatMessage';
-import { ChatMessage as IChatMessage } from '../types';
+import { ChatMessage as IChatMessage, Theme } from '../types';
 import { ArrowDown, Terminal } from './Icons';
 
 interface MessageListProps {
   messages: IChatMessage[];
   isLoading: boolean;
+  theme?: Theme;
 }
 
-const MessageList: React.FC<MessageListProps> = ({ messages }) => {
+const MessageList: React.FC<MessageListProps> = ({ messages, theme }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showNewMessagesBtn, setShowNewMessagesBtn] = useState(false);
@@ -66,28 +67,28 @@ const MessageList: React.FC<MessageListProps> = ({ messages }) => {
       <div 
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 md:px-6 scroll-smooth"
+        className="flex-1 overflow-y-auto px-4 md:px-8 scroll-smooth"
       >
         {/* 
             Padding Top: Space for the fixed header (approx 70px) + visual gap
             Padding Bottom: Space for the floating input (approx 140px) + visual gap 
         */}
-        <div className="max-w-3xl mx-auto min-h-full pt-24 pb-48">
+        <div className="max-w-6xl mx-auto min-h-full pt-24 pb-40">
             {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center pt-20 animate-fade-in text-center px-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-blue-500/30 mb-6 ring-4 ring-white/10">
-                        <Terminal className="w-8 h-8 text-white" />
+                <div className="flex flex-col items-center justify-center pt-32 animate-fade-in text-center px-4">
+                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-blue-50 to-indigo-600 flex items-center justify-center shadow-2xl shadow-blue-500/30 mb-8 ring-4 ring-white/10">
+                        <Terminal className="w-10 h-10 text-white" />
                     </div>
-                    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3 tracking-tight">AutoFlow</h2>
-                    <p className="text-gray-500 dark:text-gray-400 max-w-md text-lg leading-relaxed">
+                    <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">AutoFlow</h2>
+                    <p className="text-gray-500 dark:text-gray-400 max-w-lg text-xl leading-relaxed">
                         Your intelligent coding companion. <br/>
-                        Connect a repository to start.
+                        Connect a repository to start analyzing.
                     </p>
                 </div>
             )}
           
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} />
+            <ChatMessage key={msg.id} message={msg} theme={theme} />
           ))}
           <div ref={messagesEndRef} className="h-1" />
         </div>

@@ -63,13 +63,15 @@ const FileUpload: React.FC<FileUploadProps> = ({
     setIsDragging(false);
     if (disabled) return;
     
-    const droppedFiles = Array.from(e.dataTransfer.files);
+    // Cast to File[] to resolve TS error where Array.from infers unknown[]
+    const droppedFiles = Array.from(e.dataTransfer.files) as File[];
     validateAndAddFiles(droppedFiles);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const selectedFiles = Array.from(e.target.files);
+      // Cast to File[] to resolve TS error where Array.from infers unknown[]
+      const selectedFiles = Array.from(e.target.files) as File[];
       validateAndAddFiles(selectedFiles);
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
