@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Link, FileText, ChevronUp, ChevronDown, Upload, CheckCircle2 } from './Icons';
 import { detectLogs, countLogLines, extractLogs, extractRequirement } from '../utils/logDetection';
@@ -109,34 +110,36 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   return (
     <div className={`
-        relative rounded-2xl transition-all duration-300 ease-out
-        ${isFocused ? 'shadow-[0_20px_40px_-10px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] scale-[1.01] -translate-y-1' : 'shadow-xl shadow-gray-200/50 dark:shadow-gray-900/50'}
-        bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-white/50 dark:border-gray-700/50 ring-1 ring-gray-200/50 dark:ring-gray-700/50
+        relative rounded-2xl transition-all duration-500 ease-out
+        ${isFocused 
+            ? 'shadow-[0_0_40px_-5px_rgba(14,165,233,0.15)] dark:shadow-[0_0_50px_-10px_rgba(14,165,233,0.2)] border-primary-200/50 dark:border-primary-500/30' 
+            : 'shadow-2xl shadow-gray-200/50 dark:shadow-black/50 border-white/60 dark:border-white/10'}
+        bg-white/80 dark:bg-[#1A1B26]/80 backdrop-blur-xl border ring-1 ring-black/5 dark:ring-white/5
     `}>
         
       {/* Top Bar: Repo & Tools */}
-      <div className="flex items-center px-3 pt-3 pb-2 border-b border-gray-200/30 dark:border-gray-700/30 gap-2">
+      <div className="flex items-center px-3 pt-3 pb-2 gap-2">
         
-        {/* Repo Input Container - Flex grow to take available space */}
+        {/* Repo Input Container */}
         <div className={`
-            flex-1 flex items-center gap-2 min-w-0 rounded-lg px-2.5 py-1.5 border transition-all group
+            flex-1 flex items-center gap-2 min-w-0 rounded-xl px-3 py-2 border transition-all duration-300 group
             ${isRepoLocked 
-                ? 'bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700/50' 
-                : 'bg-white/50 dark:bg-gray-900/30 border-gray-200/50 dark:border-gray-700/50 hover:border-blue-300 dark:hover:border-blue-700 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/10 focus-within:bg-white dark:focus-within:bg-gray-900'}
+                ? 'bg-primary-50/50 dark:bg-primary-900/10 border-primary-100 dark:border-primary-800/30' 
+                : 'bg-gray-50/50 dark:bg-gray-900/30 border-transparent hover:border-gray-200 dark:hover:border-gray-700 focus-within:bg-white dark:focus-within:bg-gray-900 focus-within:border-primary-300 dark:focus-within:border-primary-600 focus-within:ring-2 focus-within:ring-primary-500/10'}
         `}>
-            <Link className={`w-3.5 h-3.5 shrink-0 ${isRepoLocked ? 'text-green-500' : 'text-gray-400 group-focus-within:text-blue-500'}`} />
+            <Link className={`w-3.5 h-3.5 shrink-0 transition-colors ${isRepoLocked ? 'text-primary-500' : 'text-gray-400 group-focus-within:text-primary-500'}`} />
             
             <div className="flex-1 relative min-w-0">
                 <input
                     type="text"
                     value={repoUrl}
                     onChange={(e) => { setRepoUrl(e.target.value); validateRepo(e.target.value); }}
-                    placeholder="Repository URL (GitHub, GitLab, etc.)"
+                    placeholder="Link repository (github.com/...)"
                     disabled={isRepoLocked}
                     className={`
                         w-full bg-transparent border-none outline-none text-xs font-mono truncate
                         ${isRepoLocked 
-                            ? 'text-gray-600 dark:text-gray-400 cursor-default' 
+                            ? 'text-primary-700 dark:text-primary-300 cursor-default font-semibold' 
                             : 'text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600'}
                     `}
                     spellCheck={false}
@@ -144,16 +147,16 @@ const ChatInput: React.FC<ChatInputProps> = ({
             </div>
 
             {repoError && !isRepoLocked && (
-                <span className="text-[10px] text-red-500 font-medium whitespace-nowrap px-1">
+                <span className="text-[10px] text-red-500 font-medium whitespace-nowrap px-1 animate-in fade-in slide-in-from-right-2">
                     {repoError}
                 </span>
             )}
              
             {isRepoLocked && (
-                 <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-green-500/10 dark:bg-green-500/20">
-                    <CheckCircle2 className="w-3 h-3 text-green-600 dark:text-green-400" />
-                    <span className="text-[10px] text-green-700 dark:text-green-300 font-medium whitespace-nowrap">
-                        Linked
+                 <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/50 dark:bg-white/5 shadow-sm">
+                    <CheckCircle2 className="w-3 h-3 text-primary-600 dark:text-primary-400" />
+                    <span className="text-[10px] text-primary-700 dark:text-primary-300 font-medium whitespace-nowrap">
+                        Connected
                     </span>
                  </div>
             )}
@@ -163,16 +166,15 @@ const ChatInput: React.FC<ChatInputProps> = ({
         <button 
             onClick={() => setShowFileUpload(!showFileUpload)}
             className={`
-                shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border
+                shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all border
                 ${logFiles.length > 0 
-                    ? 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' 
-                    : 'bg-white/50 dark:bg-gray-800/50 border-gray-200/50 dark:border-gray-700/50 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-white dark:hover:bg-gray-800'}
+                    ? 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-900/20 dark:text-indigo-300 dark:border-indigo-800' 
+                    : 'bg-gray-50/50 dark:bg-gray-900/30 border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200'}
             `}
-            title={showFileUpload ? "Hide Upload" : "Upload Log Files"}
         >
             <Upload className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">
-                {logFiles.length > 0 ? `${logFiles.length} Logs` : 'Upload Logs'}
+                {logFiles.length > 0 ? `${logFiles.length} Logs` : 'Upload'}
             </span>
              {/* Mobile counter */}
              <span className="sm:hidden">
@@ -215,7 +217,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
         {/* File Upload Zone */}
         {showFileUpload && (
-            <div className="mb-4 animate-fade-in">
+            <div className="mb-4 animate-slide-up">
                 <FileUpload 
                     files={logFiles} 
                     disabled={disabled} 
@@ -232,23 +234,23 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 onBlur={() => setIsFocused(false)}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={disabled ? "AI is working..." : placeholder}
+                placeholder={disabled ? "AI Agent is working..." : placeholder}
                 rows={1}
-                className="flex-1 bg-transparent resize-none outline-none text-sm sm:text-base text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[44px] max-h-[200px] py-2.5"
+                className="flex-1 bg-transparent resize-none outline-none text-sm sm:text-base text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 min-h-[44px] max-h-[200px] py-2.5 font-normal leading-relaxed"
             />
             
             <button
                 onClick={handleSend}
                 disabled={!canSend}
                 className={`
-                    w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200
+                    w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-300
                     ${canSend 
-                        ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 hover:scale-105 active:scale-95' 
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'}
+                        ? 'bg-gray-900 dark:bg-white text-white dark:text-black shadow-lg shadow-gray-900/20 dark:shadow-white/20 hover:scale-105 active:scale-95' 
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'}
                 `}
             >
                 {disabled ? (
-                    <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    <span className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin opacity-50" />
                 ) : (
                     <Send className="w-5 h-5 ml-0.5" />
                 )}

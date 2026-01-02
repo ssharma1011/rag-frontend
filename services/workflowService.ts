@@ -80,6 +80,21 @@ export const chatService = {
   },
 
   /**
+   * Get conversation status (Detailed)
+   */
+  getConversationStatus: async (conversationId: string): Promise<{ status: string, hasActiveStream: boolean, mode: string }> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat/${conversationId}/status`);
+      if (!response.ok) await handleApiError(response);
+      return await response.json();
+    } catch (e) {
+      console.warn('Status fetch failed', e);
+      // Fallback
+      return { status: 'UNKNOWN', hasActiveStream: false, mode: 'EXPLORE' };
+    }
+  },
+
+  /**
    * Delete a conversation
    */
   deleteConversation: async (conversationId: string): Promise<void> => {
@@ -105,7 +120,8 @@ export const chatService = {
     // Internal accumulator for partial token streaming
     let fullContent = ""; 
 
-    eventSource.addEventListener('chat-update', (event: MessageEvent) => {
+    // Handle incoming messages
+    const handleEvent = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
         // data structure: { type: string, message?: string, tool?: string, content?: string }
@@ -113,6 +129,13 @@ export const chatService = {
         switch (data.type) {
             case 'CONNECTED':
                 console.log('✅ Stream Connected');
+                // Optional: Notify UI of connection
+                onUpdate({
+                    conversationId,
+                    type: 'CONNECTED',
+                    status: 'RUNNING',
+                    agentName: 'System'
+                });
                 break;
 
             case 'THINKING':
@@ -121,7 +144,7 @@ export const chatService = {
                     type: 'THINKING',
                     status: 'RUNNING',
                     agentName: 'System', // or 'Planning'
-                    content: `Thinking: ${data.message}` // UI can treat this as status text
+                    content: `Thinking: ${data.message}` 
                 });
                 break;
 
@@ -143,7 +166,7 @@ export const chatService = {
                     type: 'PARTIAL',
                     status: 'RUNNING',
                     agentName: 'Assistant',
-                    content: fullContent // Send full accumulated text to UI for rendering
+                    content: fullContent 
                 });
                 break;
 
@@ -172,9 +195,13 @@ export const chatService = {
         }
 
       } catch (e) {
-        console.error('❌ Error parsing SSE data', e);
+        console.error('❌ Error parsing SSE data', e, event.data);
       }
-    });
+    };
+
+    // Listen to specific event name AND default message event to be robust
+    eventSource.addEventListener('chat-update', handleEvent);
+    eventSource.onmessage = handleEvent;
 
     eventSource.onerror = (error) => {
         if (eventSource.readyState !== EventSource.CLOSED) {
@@ -187,7 +214,7 @@ export const chatService = {
     return eventSource;
   },
 
-  // --- Metrics Calls (Unchanged endpoints usually, assuming metrics API is separate) ---
+  // --- Metrics Calls ---
 
   getDashboardMetrics: async (): Promise<DashboardResponse> => {
     try {

@@ -6,59 +6,69 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoFlow AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         darkMode: 'class',
         theme: {
           extend: {
             fontFamily: {
-              sans: ['Inter', 'sans-serif'],
+              sans: ['Outfit', 'sans-serif'],
               mono: ['JetBrains Mono', 'monospace'],
             },
             colors: {
               gray: {
-                50: '#f9fafb',
-                100: '#f3f4f6',
-                200: '#e5e7eb',
-                300: '#d1d5db',
-                400: '#9ca3af',
-                500: '#6b7280',
-                600: '#4b5563',
+                50: '#F9FAFB',
+                100: '#F3F4F6',
+                200: '#E5E7EB',
+                300: '#D1D5DB',
+                400: '#9CA3AF',
+                500: '#6B7280',
+                600: '#4B5563',
                 700: '#374151',
-                800: '#1f2937',
-                850: '#171923',
+                800: '#1F2937',
                 900: '#111827',
-                950: '#030712',
+                950: '#0B0C15', // Darker, richer base
               },
               primary: {
-                50: '#eff6ff',
-                100: '#dbeafe',
-                500: '#3b82f6',
-                600: '#2563eb',
-                700: '#1d4ed8',
-                glow: 'rgba(59, 130, 246, 0.5)'
+                50: '#F0F9FF',
+                100: '#E0F2FE',
+                200: '#BAE6FD',
+                300: '#7DD3FC',
+                400: '#38BDF8',
+                500: '#0EA5E9',
+                600: '#0284C7',
+                700: '#0369A1',
+                800: '#075985',
+                900: '#0C4A6E',
+                950: '#082F49',
               }
             },
             animation: {
-              'fade-in': 'fadeIn 0.3s ease-out',
-              'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
-              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              'progress-indeterminate': 'progressIndeterminate 1.5s infinite linear',
+              'fade-in': 'fadeIn 0.4s ease-out forwards',
+              'slide-in': 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'slide-up': 'slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'float': 'float 6s ease-in-out infinite',
             },
             keyframes: {
               fadeIn: {
                 '0%': { opacity: '0' },
                 '100%': { opacity: '1' },
               },
+              slideIn: {
+                '0%': { transform: 'translateX(-20px)', opacity: '0' },
+                '100%': { transform: 'translateX(0)', opacity: '1' },
+              },
               slideUp: {
                 '0%': { transform: 'translateY(20px)', opacity: '0' },
                 '100%': { transform: 'translateY(0)', opacity: '1' },
               },
-              progressIndeterminate: {
-                '0%': { transform: 'translateX(-100%) scaleX(0.2)' },
-                '50%': { transform: 'translateX(0%) scaleX(0.5)' },
-                '100%': { transform: 'translateX(100%) scaleX(0.2)' },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' },
               }
             },
             typography: (theme) => ({
@@ -66,11 +76,16 @@
                 css: {
                   maxWidth: 'none',
                   color: theme('colors.gray.700'),
-                  fontFamily: 'Inter, sans-serif',
-                  p: { marginTop: '0.5em', marginBottom: '0.5em', lineHeight: '1.6' },
+                  fontFamily: 'Outfit, sans-serif',
+                  h1: { fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.025em' },
+                  h2: { fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.025em' },
+                  h3: { fontFamily: 'Outfit, sans-serif', letterSpacing: '-0.025em' },
                   code: {
                     fontFamily: 'JetBrains Mono, monospace',
                     fontWeight: '500',
+                    backgroundColor: theme('colors.gray.100'),
+                    padding: '0.2em 0.4em',
+                    borderRadius: '0.25rem',
                   },
                   'code::before': { content: '""' },
                   'code::after': { content: '""' },
@@ -84,6 +99,10 @@
               invert: {
                 css: {
                   color: theme('colors.gray.300'),
+                  code: {
+                    backgroundColor: theme('colors.gray.800'),
+                    color: theme('colors.gray.200'),
+                  },
                 },
               },
             }),
@@ -92,9 +111,9 @@
         plugins: [
           function({ addBase, theme }) {
             addBase({
-              'h1': { fontSize: theme('fontSize.2xl') },
-              'h2': { fontSize: theme('fontSize.xl') },
-              'h3': { fontSize: theme('fontSize.lg') },
+              'h1': { fontSize: theme('fontSize.3xl'), fontWeight: '700' },
+              'h2': { fontSize: theme('fontSize.2xl'), fontWeight: '600' },
+              'h3': { fontSize: theme('fontSize.xl'), fontWeight: '600' },
             })
           }
         ]
@@ -102,12 +121,51 @@
     </script>
     <style>
       html { scroll-behavior: smooth; }
+      body {
+        font-family: 'Outfit', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
       ::-webkit-scrollbar { width: 6px; height: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background-color: rgba(156, 163, 175, 0.3); border-radius: 999px; }
       ::-webkit-scrollbar-thumb:hover { background-color: rgba(156, 163, 175, 0.5); }
-      .glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
-      .dark .glass { background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); }
+      
+      /* Atmospheric Background */
+      .mesh-bg {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -1;
+        background-color: #f3f4f6;
+        background-image: 
+          radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+          radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+          radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+        opacity: 0.1;
+      }
+      .dark .mesh-bg {
+         background-color: #0B0C15;
+         background-image: 
+           radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
+           radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+           radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.05) 0px, transparent 50%),
+           radial-gradient(at 0% 100%, rgba(14, 165, 233, 0.05) 0px, transparent 50%);
+         opacity: 1;
+      }
+
+      .glass-panel {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+      }
+      .dark .glass-panel {
+        background: rgba(17, 24, 39, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+      }
     </style>
   <script type="importmap">
 {
@@ -127,11 +185,8 @@
 }
 </script>
 </head>
-  <body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-300 antialiased overflow-hidden">
-    <div class="fixed inset-0 z-0 pointer-events-none opacity-40 dark:opacity-20">
-        <div class="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-purple-500 blur-[128px]"></div>
-        <div class="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-blue-600 blur-[128px]"></div>
-    </div>
+  <body class="text-gray-900 dark:text-gray-100 transition-colors duration-300 antialiased overflow-hidden">
+    <div class="mesh-bg transition-opacity duration-500"></div>
     <div id="root" class="relative z-10 h-full"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

@@ -18,7 +18,6 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<Theme>('light');
 
   // --- App State ---
-  // We now fetch conversations from server, so this is just the summary list for sidebar
   const [conversationList, setConversationList] = useState<ConversationSummary[]>([]);
   
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -111,32 +110,19 @@ const App: React.FC = () => {
 
             // If last message is from assistant, update it
             if (lastMsg && lastMsg.role === 'assistant') {
-                // For THINKING or TOOL, we might just show it as the current content or status
-                // For PARTIAL, content is the accumulated text
-                
                 let displayContent = content || "";
                 
-                // If we receive "THINKING" but already have partial content, 
-                // we might want to preserve the partial content or append status.
-                // For simplicity in this migration:
-                // If type is PARTIAL or COMPLETE, use content as main text.
-                // If type is THINKING/TOOL, update agentName status but keep text if possible, 
-                // OR simply display the thinking status if no text yet.
-                
                 if (type === 'THINKING' || type === 'TOOL') {
-                   // Optional: You could have a separate 'statusMessage' field in ChatMessage
-                   // For now, if we have no content yet, show the thinking message
                    if (lastMsg.content === '' || lastMsg.status === 'RUNNING') {
-                       // Don't overwrite actual partial content with "Thinking"
-                       if (type === 'THINKING' && !displayContent.startsWith('Thinking')) {
-                           displayContent = `_${displayContent}_`; // Italics for status
+                       if (type === 'THINKING' && displayContent && !displayContent.startsWith('Thinking')) {
+                           displayContent = `_${displayContent}_`; 
                        }
                    }
                 }
 
                 msgs[msgs.length - 1] = {
                     ...lastMsg,
-                    content: displayContent,
+                    content: displayContent || lastMsg.content, // Keep old content if new is empty
                     status: status,
                     agentName: agentName
                 };
@@ -144,11 +130,11 @@ const App: React.FC = () => {
             } 
             
             // If we don't have an assistant message yet, create one
-            if ((!lastMsg || lastMsg.role === 'user') && (content || type === 'THINKING')) {
+            if (!lastMsg || lastMsg.role === 'user') {
                 return [...msgs, {
                     id: `msg_${Date.now()}`,
                     role: 'assistant',
-                    content: content || "...",
+                    content: content || "",
                     timestamp: new Date(),
                     status: 'RUNNING',
                     agentName: agentName || 'System'
@@ -161,7 +147,7 @@ const App: React.FC = () => {
         if (status === 'COMPLETED' || status === 'FAILED') {
             setIsLoading(false);
             closeStream(conversationId);
-            refreshConversationList(userId); // Refresh list to update timestamps/counts
+            refreshConversationList(userId);
         } else {
             setIsLoading(true);
         }
@@ -171,14 +157,18 @@ const App: React.FC = () => {
   const handleStreamError = (error: any, conversationId: string) => {
     console.error(`Stream error for ${conversationId}`, error);
     if (currentConversationIdRef.current === conversationId) {
-        setMessages(prev => [...prev, {
-            id: `err_${Date.now()}`,
-            role: 'assistant',
-            content: '❌ Connection lost.',
-            timestamp: new Date(),
-            status: 'FAILED',
-            agentName: 'System'
-        }]);
+        setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.status === 'FAILED') return prev;
+            return [...prev, {
+                id: `err_${Date.now()}`,
+                role: 'assistant',
+                content: '❌ Connection lost.',
+                timestamp: new Date(),
+                status: 'FAILED',
+                agentName: 'System'
+            }];
+        });
         setIsLoading(false);
     }
     closeStream(conversationId);
@@ -188,35 +178,40 @@ const App: React.FC = () => {
 
   const startNewChat = () => {
     setCurrentConversationId(null);
+    currentConversationIdRef.current = null;
     setMessages([]);
     setIsRepoLocked(false);
     setIsLoading(false);
-    setRepoUrl(''); // Clear repo for clean slate
+    setRepoUrl(''); 
   };
 
   const loadConversation = async (id: string) => {
-    // Check if valid
     const summary = conversationList.find(c => c.conversationId === id);
-    if (!summary && conversationList.length > 0) return; // Allow loading if list empty/loading? No.
+    if (!summary && conversationList.length > 0) return;
 
     console.log(`📂 Loading conversation: ${id}`);
     
     // 1. Set Context
     setCurrentConversationId(id);
+    currentConversationIdRef.current = id;
+
     if (summary) {
         setRepoUrl(summary.repoUrl);
         setIsRepoLocked(true);
     }
     setIsHistoryOpen(false);
-    setMessages([]); // Clear previous
+    setMessages([]); 
     setIsLoading(true);
 
     try {
-        // 2. Fetch History
-        const data = await chatService.getHistory(id);
-        const mappedMessages: ChatMessage[] = data.messages.map((m: any) => ({
+        const [historyData, statusData] = await Promise.all([
+             chatService.getHistory(id),
+             chatService.getConversationStatus(id)
+        ]);
+
+        const mappedMessages: ChatMessage[] = historyData.messages.map((m: any) => ({
             id: `hist_${Math.random()}`,
-            role: m.role, // 'user' | 'assistant'
+            role: m.role,
             content: m.content,
             timestamp: new Date(m.timestamp),
             status: 'COMPLETED',
@@ -225,10 +220,8 @@ const App: React.FC = () => {
         
         setMessages(mappedMessages);
         
-        // 3. Check status (if active, resume stream)
-        // If the summary says ACTIVE, we can try to connect to stream
-        if (summary?.status === 'ACTIVE') {
-             // Close existing
+        if (statusData.hasActiveStream) {
+             console.log("🌊 Active stream detected, reconnecting...");
              closeStream(id);
              const es = chatService.connectToStream(
                  id, 
@@ -236,6 +229,7 @@ const App: React.FC = () => {
                  (e) => handleStreamError(e, id)
              );
              activeStreamsRef.current.set(id, es);
+             setIsLoading(true);
         } else {
             setIsLoading(false);
         }
@@ -248,17 +242,10 @@ const App: React.FC = () => {
 
   const handleDeleteConversation = async (id: string) => {
     if(!confirm("Are you sure you want to delete this conversation?")) return;
-    
     try {
         await chatService.deleteConversation(id);
-        
-        // Update list
         setConversationList(prev => prev.filter(c => c.conversationId !== id));
-        
-        // If current, reset
-        if (currentConversationId === id) {
-            startNewChat();
-        }
+        if (currentConversationId === id) startNewChat();
     } catch (e) {
         alert("Failed to delete conversation");
     }
@@ -271,26 +258,22 @@ const App: React.FC = () => {
     logFiles?: File[];
   }) => {
     
-    // Combine logs into message since API is JSON only
     let finalMessage = data.content;
     
-    // Process Log Files content
     if (data.logFiles && data.logFiles.length > 0) {
         finalMessage += "\n\n--- ATTACHED LOG FILES ---\n";
         for (const file of data.logFiles) {
             const text = await file.text();
-            finalMessage += `\n[File: ${file.name}]\n\`\`\`\n${text.substring(0, 50000)}\n\`\`\`\n`; // Cap size to avoid huge payloads
+            finalMessage += `\n[File: ${file.name}]\n\`\`\`\n${text.substring(0, 50000)}\n\`\`\`\n`; 
         }
     }
 
-    // Process Pasted Logs
     if (data.logsPasted) {
          finalMessage += `\n\n--- PASTED LOGS ---\n\`\`\`\n${data.logsPasted}\n\`\`\``;
     }
 
     const isNew = !currentConversationId;
 
-    // Optimistic UI Update
     const userMsg: ChatMessage = {
         id: `msg_${Date.now()}_u`,
         role: 'user',
@@ -298,26 +281,28 @@ const App: React.FC = () => {
         timestamp: new Date(),
         status: 'COMPLETED'
     };
+    
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
     setRepoUrl(data.repoUrl);
     setIsRepoLocked(true);
 
     try {
-        // Send API Request
         const response = await chatService.sendMessage({
             message: finalMessage,
             repoUrl: isNew ? data.repoUrl : undefined,
             conversationId: isNew ? undefined : currentConversationId!,
             userId: userId,
-            mode: 'EXPLORE' // Default mode
+            branch: 'main', 
+            mode: 'EXPLORE'
         });
 
         const convId = response.conversationId;
         
         if (isNew) {
             setCurrentConversationId(convId);
-            // Add temp to list
+            currentConversationIdRef.current = convId; 
+            
             setConversationList(prev => [{
                 conversationId: convId,
                 repoUrl: data.repoUrl,
@@ -328,7 +313,6 @@ const App: React.FC = () => {
             }, ...prev]);
         }
 
-        // Connect Stream
         closeStream(convId);
         const es = chatService.connectToStream(
             convId,
@@ -352,9 +336,9 @@ const App: React.FC = () => {
 
   if (!isAppReady) {
     return (
-        <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-950 text-gray-400">
-            <Loader2 className="w-10 h-10 animate-spin mb-4 text-blue-500" />
-            <p className="font-mono text-sm">Loading AutoFlow...</p>
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-gray-50 dark:bg-[#0B0C15] text-gray-400">
+            <Loader2 className="w-10 h-10 animate-spin mb-4 text-primary-500" />
+            <p className="font-mono text-sm tracking-widest uppercase">Initializing AutoFlow...</p>
         </div>
     );
   }
