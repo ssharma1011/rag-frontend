@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, BarChart2, CheckCircle2, AlertTriangle, DollarSign, Activity, Terminal, Clock, Bot, AlertOctagon } from './Icons';
-import { workflowService } from '../services/workflowService';
+import { chatService as workflowService } from '../services/workflowService';
 import { DashboardResponse, ConversationMetricsResponse, LLMCallMetrics } from '../types';
 
 interface MetricsModalProps {

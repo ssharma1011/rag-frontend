@@ -1,3 +1,4 @@
+
 export { 
   Home, 
   History, 
@@ -27,5 +28,6 @@ export {
   Activity,
   AlertOctagon,
   Copy,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';

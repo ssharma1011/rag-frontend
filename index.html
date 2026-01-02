@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -16,7 +17,6 @@
               mono: ['JetBrains Mono', 'monospace'],
             },
             colors: {
-              // Refined Slate/Zinc palette for a technical look
               gray: {
                 50: '#f9fafb',
                 100: '#f3f4f6',
@@ -27,9 +27,9 @@
                 600: '#4b5563',
                 700: '#374151',
                 800: '#1f2937',
-                850: '#171923', // Deep background
+                850: '#171923',
                 900: '#111827',
-                950: '#030712', // Almost black
+                950: '#030712',
               },
               primary: {
                 50: '#eff6ff',
@@ -44,6 +44,7 @@
               'fade-in': 'fadeIn 0.3s ease-out',
               'slide-up': 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
               'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'progress-indeterminate': 'progressIndeterminate 1.5s infinite linear',
             },
             keyframes: {
               fadeIn: {
@@ -53,6 +54,11 @@
               slideUp: {
                 '0%': { transform: 'translateY(20px)', opacity: '0' },
                 '100%': { transform: 'translateY(0)', opacity: '1' },
+              },
+              progressIndeterminate: {
+                '0%': { transform: 'translateX(-100%) scaleX(0.2)' },
+                '50%': { transform: 'translateX(0%) scaleX(0.5)' },
+                '100%': { transform: 'translateX(100%) scaleX(0.2)' },
               }
             },
             typography: (theme) => ({
@@ -62,7 +68,6 @@
                   color: theme('colors.gray.700'),
                   fontFamily: 'Inter, sans-serif',
                   p: { marginTop: '0.5em', marginBottom: '0.5em', lineHeight: '1.6' },
-                  // Remove default code styling to avoid conflicts with syntax highlighter
                   code: {
                     fontFamily: 'JetBrains Mono, monospace',
                     fontWeight: '500',
@@ -96,46 +101,13 @@
       }
     </script>
     <style>
-      /* Smooth scrolling */
       html { scroll-behavior: smooth; }
-      
-      /* Glass scrollbar */
-      ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-        background-color: rgba(156, 163, 175, 0.3);
-        border-radius: 999px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background-color: rgba(156, 163, 175, 0.5);
-      }
-      
-      /* Utilities */
-      .glass {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-      }
-      .dark .glass {
-        background: rgba(17, 24, 39, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-      }
-      
-      .glass-card {
-        background: rgba(255, 255, 255, 0.5);
-        backdrop-filter: blur(8px);
-        border: 1px solid rgba(0,0,0,0.05);
-      }
-      .dark .glass-card {
-        background: rgba(30, 41, 59, 0.4);
-        border: 1px solid rgba(255,255,255,0.05);
-      }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background-color: rgba(156, 163, 175, 0.3); border-radius: 999px; }
+      ::-webkit-scrollbar-thumb:hover { background-color: rgba(156, 163, 175, 0.5); }
+      .glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.3); }
+      .dark .glass { background: rgba(17, 24, 39, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); }
     </style>
   <script type="importmap">
 {
@@ -156,7 +128,6 @@
 </script>
 </head>
   <body class="bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-300 antialiased overflow-hidden">
-    <!-- Ambient Background Mesh -->
     <div class="fixed inset-0 z-0 pointer-events-none opacity-40 dark:opacity-20">
         <div class="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full bg-purple-500 blur-[128px]"></div>
         <div class="absolute bottom-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-blue-600 blur-[128px]"></div>

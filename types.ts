@@ -1,47 +1,57 @@
+
 export type Theme = 'light' | 'dark';
 
-export type MessageSender = 'user' | 'agent';
+export type MessageRole = 'user' | 'assistant' | 'system';
 
-export type WorkflowStatus = 'RUNNING' | 'COMPLETED' | 'FAILED' | 'WAITING_FOR_DEVELOPER';
+export type ChatStatus = 'ACTIVE' | 'COMPLETED' | 'FAILED';
 
 export interface ChatMessage {
   id: string;
-  sender: MessageSender;
+  role: MessageRole;
   content: string;
   timestamp: Date;
-  agent?: string;
-  status?: WorkflowStatus;
-  progress?: number; // 0-1
+  status?: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  agentName?: string; // Used for "Thinking..." or Tool names
 }
 
-export interface WorkflowRequest {
-  requirement: string;
-  repoUrl: string;
-  targetClass?: string;
-  logsPasted?: string;
-  logFiles?: File[];
-}
-
-export interface WorkflowStatusResponse {
-  conversationId: string;
-  status: WorkflowStatus;
+export interface ChatRequest {
   message: string;
-  agent?: string;
-  progress?: number;
+  repoUrl?: string; // New conversations
+  conversationId?: string; // Follow-up
+  userId?: string;
+  branch?: string;
+  mode?: 'EXPLORE' | 'DEBUG' | 'IMPLEMENT' | 'REVIEW';
 }
 
-export interface Conversation {
-  id: string;
+export interface ChatResponse {
+  success: boolean;
+  conversationId: string;
+  response?: string;
+}
+
+export interface ConversationSummary {
+  conversationId: string;
   repoUrl: string;
-  messages: ChatMessage[];
-  timestamp: Date;
+  repoName?: string;
+  status: string;
+  createdAt: string; // ISO string
+  lastActivity: string; // ISO string
+  messageCount: number;
 }
 
-// --- Metrics Interfaces (Matching Java DTOs) ---
+export interface ChatStreamUpdate {
+  conversationId: string;
+  content?: string; // The accumulator text or status message
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  type: 'THINKING' | 'TOOL' | 'PARTIAL' | 'COMPLETE' | 'ERROR' | 'CONNECTED';
+  agentName?: string;
+}
+
+// --- Metrics Interfaces ---
 
 export interface LLMCallMetrics {
   id?: string;
-  timestamp: string; // ISO DateTime
+  timestamp: string;
   agentName: string;
   model: string;
   promptTokens: number;
@@ -51,7 +61,11 @@ export interface LLMCallMetrics {
   cost: number;
   status: 'SUCCESS' | 'FAILURE';
   errorMessage?: string;
-  retryCount?: number;
+}
+
+export interface DashboardResponse {
+  cost_last_24h: number;
+  timestamp: string;
 }
 
 export interface ConversationMetricsResponse {
@@ -61,18 +75,4 @@ export interface ConversationMetricsResponse {
   totalCost: number;
   averageLatencyMs: number;
   calls: LLMCallMetrics[];
-}
-
-export interface AgentPerformanceStats {
-  agentName: string;
-  totalCalls: number;
-  avgLatencyMs: number;
-  successRate: number; // 0.0 to 1.0
-  totalCost: number;
-}
-
-export interface DashboardResponse {
-  cost_last_24h: number;
-  timestamp: string;
-  // Add other dashboard fields if backend provides them
 }

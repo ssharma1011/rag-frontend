@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import ChatMessage from './ChatMessage';
 import { ChatMessage as IChatMessage, Theme } from '../types';
@@ -41,25 +42,17 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme }) => {
     if (messages.length === 0) return;
 
     const lastMessage = messages[messages.length - 1];
-    const isUserMessage = lastMessage.sender === 'user';
+    const isUserMessage = lastMessage.role === 'user';
 
-    // If it's a user message, force scroll to bottom always
     if (isUserMessage) {
       scrollToBottom();
     } else {
-      // If agent message, only scroll if we were already at the bottom
       if (autoScrollEnabled) {
         scrollToBottom();
       } else {
-        // Only show notification if we are NOT auto-scrolling (user scrolled up)
         setShowNewMessagesBtn(true);
       }
     }
-  // Remove autoScrollEnabled from dependency array.
-  // We only want to evaluate this logic when *messages* change.
-  // If the user scrolls up (changing autoScrollEnabled), we do NOT want to show the button immediately.
-  // The button should only appear if a NEW message/token arrives while they are scrolled up.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   return (
@@ -69,10 +62,6 @@ const MessageList: React.FC<MessageListProps> = ({ messages, theme }) => {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 md:px-8 scroll-smooth"
       >
-        {/* 
-            Padding Top: Space for the fixed header (approx 70px) + visual gap
-            Padding Bottom: Space for the floating input (approx 140px) + visual gap 
-        */}
         <div className="max-w-6xl mx-auto min-h-full pt-24 pb-40">
             {messages.length === 0 && (
                 <div className="flex flex-col items-center justify-center pt-32 animate-fade-in text-center px-4">
